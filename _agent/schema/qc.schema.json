@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qc_input.json / qc_surface.json",
+  "type": "object",
+  "required": ["verb", "nguong_da_dung", "phat_hien"],
+  "properties": {
+    "verb": { "enum": ["nhap", "mat", "lo"] },
+    "nguong_da_dung": { "type": "object", "additionalProperties": { "type": "number" } },
+    "phat_hien": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ma", "loai", "mo_ta", "muc"],
+        "properties": {
+          "ma": { "type": "string", "examples": ["V-01"] },
+          "loai": { "enum": ["dong_hong", "diem_trung", "cao_do_bat_thuong", "pham_vi_toa_do",
+                              "tam_giac_det", "tam_giac_qua_lon", "thieu_du_lieu",
+                              "bien_khong_khep", "bien_tu_cat", "area_lech", "giao_dutgay"] },
+          "muc": { "enum": ["canh_bao", "chan"], "description": "chan = không được đi tiếp" },
+          "mo_ta": { "type": "string" },
+          "vi_tri": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 3 },
+          "lua_chon": { "type": "array", "items": { "type": "string" } },
+          "he_qua_neu_bo_qua": { "type": "string" }
+        }
+      }
+    }
+  }
+}

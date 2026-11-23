@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+# Dữ liệu dự án không vào git: file khảo sát và bản vẽ nặng, và là bằng chứng gốc
+projects/*/lots/*/00_input/*
+!projects/*/lots/*/00_input/.gitkeep
+projects/*/lots/*/10_process/*
+projects/*/lots/*/20_output/*
+projects/*/lots/*/90_log/*
+!projects/*/lots/*/*/.gitkeep

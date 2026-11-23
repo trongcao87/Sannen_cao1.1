@@ -1,0 +1,33 @@
+# Lệnh khởi tạo dạng file. Người điền, agent đọc. Thiếu trường nào lõi hỏi đúng trường đó.
+ma_lo: 01-CGP
+ten_lo: Lô 01-CGP
+dot: 1
+he_toa_do: VN-2000
+don_vi: m
+phuong_phap_chinh_thuc: luoi_o_vuong
+
+be_mat_moc:
+  nguon: dxf_layer        # dxf_layer | excel | csv | dot_truoc
+  layer: SN-DIEM-MOC
+be_mat_do:
+  nguon: dxf_layer
+  layer: SN-DIEM-DO
+
+luoi:
+  kich_thuoc_o_m: 20
+  goc_xoay_do: 0
+  # goc_luoi: [445000.0, 1113000.0]   # bỏ trống thì tool tự đặt vừa biên lô
+
+# he_so_dam_chat: 1.0     # k trong V_đắp = k × V_đào, theo thí nghiệm đầm chặt
+
+# Ánh xạ cột khi khảo sát giao Excel thay vì bản vẽ.
+# File lô 01-CGP có 7 dòng tiêu đề và XẾP HAI KHỐI ĐIỂM trên mỗi dòng (cột 1-5 và 6-10).
+anh_xa_cot_excel:
+  id: Tên điểm
+  northing: Tọa độ X(m)      # X là NORTHING (~1.113.000)
+  easting: Tọa độ Y(m)       # Y là EASTING  (~445.000)
+  z: Cao độ H(m)
+  code: Ghi chú
+
+# nguong:                 # ghi đè kb/nguong-qc.md cho riêng lô này
+#   o_lech_lon_pct: 5.0

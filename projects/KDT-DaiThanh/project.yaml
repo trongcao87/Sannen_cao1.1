@@ -1,0 +1,15 @@
+ten_du_an: KĐT Đại Thành
+chu_dau_tu: (điền)
+he_toa_do: VN-2000
+don_vi: m
+# Phương pháp đo bóc chính thức của gói thầu. Quyết định đâu là SỐ NỘP (RULES 9).
+phuong_phap_chinh_thuc: luoi_o_vuong
+chi_dan_do_boc:
+  # Nếu chỉ dẫn đo bóc đã chốt gốc và phương lưới thì khai ở đây — khi đó không có
+  # gì để chọn, và ma trận quét ở mục 11 chỉ để biết nhà thầu đặt lưới lợi bao nhiêu.
+  da_chot_dat_luoi: false
+  kich_thuoc_o_m: 20
+  ghi_chu: ""
+can_cu:
+  - TT 13/2021/TT-BXD Phụ lục VI, sửa bởi TT 01/2025/TT-BXD (hiệu lực 08/3/2025)
+  - NĐ 207/2026/NĐ-CP — nghiệm thu theo giai đoạn thi công

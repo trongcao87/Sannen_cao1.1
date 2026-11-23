@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "points_*.csv — điểm đo đã chuẩn hóa",
+  "type": "object",
+  "required": ["columns", "rows"],
+  "properties": {
+    "columns": { "const": ["id", "northing", "easting", "z", "code"] },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "array", "minItems": 5, "maxItems": 5,
+        "prefixItems": [
+          { "type": "string" },
+          { "type": "number", "description": "Northing, VN-2000, ~1.113.000" },
+          { "type": "number", "description": "Easting, VN-2000, ~445.000" },
+          { "type": "number", "description": "Cao độ, m" },
+          { "type": "string" }
+        ]
+      }
+    }
+  }
+}

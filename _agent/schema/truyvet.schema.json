@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "phieu_truy_vet.json — đính kèm mọi kết quả",
+  "type": "object",
+  "required": ["ma_lo", "dot", "thoi_diem", "phien_ban_loi", "dau_vao", "tham_so"],
+  "properties": {
+    "ma_lo": { "type": "string" },
+    "dot": { "type": "integer" },
+    "thoi_diem": { "type": "string", "format": "date-time" },
+    "phien_ban_loi": { "type": "string" },
+    "dau_vao": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "hash_sha256", "so_diem"],
+        "properties": {
+          "file": { "type": "string" },
+          "hash_sha256": { "type": "string" },
+          "so_diem": { "type": "integer" }
+        }
+      }
+    },
+    "tham_so": {
+      "type": "object",
+      "properties": {
+        "phuong_phap": { "type": "string" },
+        "kich_thuoc_o_m": { "type": "number" },
+        "goc_xoay_do": { "type": "number" },
+        "goc_luoi": { "type": "array", "items": { "type": "number" } }
+      }
+    },
+    "quyet_dinh_cua_nguoi": {
+      "type": "array",
+      "description": "Trích từ 90_log/decisions.md — đã xử lý gì trên mô hình",
+      "items": { "type": "string" }
+    }
+  }
+}

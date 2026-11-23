@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "lot.yaml — khai báo một lô tính toán",
+  "type": "object",
+  "required": ["ma_lo", "dot", "he_toa_do", "phuong_phap_chinh_thuc", "be_mat_moc", "be_mat_do", "luoi"],
+  "properties": {
+    "ma_lo": { "type": "string", "examples": ["01-CGP"] },
+    "ten_lo": { "type": "string" },
+    "dot": { "type": "integer", "minimum": 1, "description": "Đợt nghiệm thu" },
+    "he_toa_do": { "const": "VN-2000" },
+    "don_vi": { "const": "m" },
+    "phuong_phap_chinh_thuc": {
+      "enum": ["luoi_o_vuong", "mat_cat", "lang_tru"],
+      "description": "Phương pháp hồ sơ dự án bắt buộc — quyết định đâu là SỐ NỘP"
+    },
+    "be_mat_moc": {
+      "type": "object",
+      "required": ["nguon"],
+      "properties": {
+        "nguon": { "enum": ["dxf_layer", "excel", "csv", "dot_truoc"] },
+        "layer": { "type": "string", "default": "SN-DIEM-MOC" },
+        "file": { "type": "string" },
+        "dot_truoc": { "type": "integer" }
+      }
+    },
+    "be_mat_do": {
+      "type": "object",
+      "required": ["nguon"],
+      "properties": {
+        "nguon": { "enum": ["dxf_layer", "excel", "csv"] },
+        "layer": { "type": "string", "default": "SN-DIEM-DO" },
+        "file": { "type": "string" }
+      }
+    },
+    "luoi": {
+      "type": "object",
+      "required": ["kich_thuoc_o_m"],
+      "properties": {
+        "kich_thuoc_o_m": { "type": "number", "exclusiveMinimum": 0, "examples": [20] },
+        "goc_xoay_do": { "type": "number", "default": 0 },
+        "goc_luoi": {
+          "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2,
+          "description": "[easting, northing] của gốc lưới; bỏ trống thì tool tự đặt vừa biên"
+        }
+      }
+    },
+    "he_so_dam_chat": { "type": "number", "description": "k trong V_đắp = k × V_đào" },
+    "anh_xa_cot_excel": {
+      "type": "object",
+      "description": "Tên cột trong file khảo sát → trường chuẩn",
+      "properties": {
+        "id": { "type": "string" }, "northing": { "type": "string" },
+        "easting": { "type": "string" }, "z": { "type": "string" }, "code": { "type": "string" }
+      }
+    },
+    "nguong": {
+      "type": "object",
+      "description": "Ghi đè ngưỡng của kb/nguong-qc.md cho riêng lô này",
+      "additionalProperties": { "type": "number" }
+    }
+  }
+}

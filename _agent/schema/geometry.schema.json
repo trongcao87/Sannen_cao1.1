@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "breaklines / boundary / exclude — GeoJSON dẫn xuất từ DXF",
+  "type": "object",
+  "required": ["type", "features"],
+  "properties": {
+    "type": { "const": "FeatureCollection" },
+    "sinh_tu": {
+      "type": "object",
+      "description": "Truy vết: file DXF và layer đã trích",
+      "required": ["dxf", "layer", "hash"],
+      "properties": {
+        "dxf": { "type": "string" }, "layer": { "type": "string" },
+        "hash": { "type": "string" },
+        "cung_tron_sai_so_mm": { "type": "number" }
+      }
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "geometry", "properties"],
+        "properties": {
+          "type": { "const": "Feature" },
+          "geometry": {
+            "type": "object",
+            "properties": {
+              "type": { "enum": ["LineString", "Polygon"] },
+              "coordinates": { "type": "array" }
+            },
+            "description": "Toạ độ [easting, northing, z?] — z bắt buộc với breakline"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "vai_tro": { "enum": ["dut_gay", "bien_lo", "loai_tru", "dong_muc"] },
+              "khep_kin": { "type": "boolean" },
+              "dien_tich_m2": { "type": "number" },
+              "dien_tich_area_cad_m2": { "type": "number" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
