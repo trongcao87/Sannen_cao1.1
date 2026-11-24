@@ -19,6 +19,8 @@ tuân thủ 12 điều trong đó — chúng là ràng buộc nghiệp vụ, kh�
    ngoại tiếp làm mất gần hết chữ số có nghĩa. Bỏ bước này là nguồn lỗi khó tìm
    nhất của cả dự án.
 
+**Bàn giao / tiến độ hiện tại (đọc đầu tiên khi tiếp tục công việc):** `_agent/TIEN-DO.md`.
+
 **Kiến trúc và phân vai (Người · Agent · Tool · Add-in C#):** xem `_agent/KIEN-TRUC-TOI-UU.md` — C# là lớp CAD duy nhất, lõi Python giữ nguyên.
 
 ## Lộ trình — làm theo thứ tự, mỗi giai đoạn một commit
