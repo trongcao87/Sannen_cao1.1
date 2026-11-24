@@ -1,6 +1,7 @@
 ﻿// Điều phối làm mới: số liệu từ Python (luồng nền) + quét bản vẽ (luồng giao diện). Có debounce, không vòng lặp:
 // làm mới chỉ ĐỌC (thong-tin không ghi, quét bản vẽ không ghi), nên lệnh SN_* kết thúc → làm mới một lần rồi dừng.
 using System;
+using CauHinh = SanNen.Draw.CauHinh;
 using System.Threading;
 using System.Windows.Forms;
 using Autodesk.AutoCAD.ApplicationServices;

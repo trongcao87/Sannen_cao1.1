@@ -43,3 +43,11 @@ Bảng điều khiển trung tâm **`SN_QL`** (hiện/ẩn nhóm TIN–lưới�
 ## Palette .NET (bảng dọc dock được, nhiều tab)
 
 `cad/dotnet/SanNenPalette/` (C# 5, .NET Framework 4.8, build bằng `csc.exe`): `powershell -ExecutionPolicy Bypass -File cad\dotnet\xay_palette.ps1` → `cad\dotnet\bin\SanNenPalette.dll` (gitignore). Trong AutoCAD gõ `SN_PALETTE`. Tab: QL ĐH · Biên lô · Lưới · Mặt cắt · Khối lượng · Cảnh báo. Dữ liệu qua `python -m sannen_cad.cau_noi thong-tin --json` (JSON, chạy nền). Chi tiết, checklist GUI: [MENU.md](MENU.md).
+
+## SanNenDraw.dll — vẽ bằng API từ kế hoạch JSON (bước 2 của `_agent/KIEN-TRUC-TOI-UU.md`)
+
+Python xuất **kế hoạch vẽ JSON** (`python -m sannen_cad.cau_noi ve-ke-hoach …` hoặc `python -m sannen_cad.ke_hoach …`; mã `sannen_cad/ke_hoach.py`, dùng lại
+`ve.ve_ket_qua` + `bo_cuc` qua một backend nữa là `BackendKeHoach` — không nhân đôi logic tính, chỉ đổi đầu ra từ `.lsp` sang JSON). Add-in thứ hai
+`cad/dotnet/SanNenDraw/` (`SanNenDraw.dll`, chỉ `accoremgd` + `acdbmgd`, chạy được cả trong `accoreconsole.exe`) vẽ trong một Transaction, gắn XDATA `SANNEN`,
+purge đúng lô+đợt trước khi vẽ. Lệnh: `SN_VE_NET`, `SN_XOA_NET`, `SN_XOA_NET_Y`, `SN_TIN3D_NET`, `SN_KEHOACH_NET`; `sannen.lsp` tự dùng chúng cho `SN_VE`, `SN_XOA`, `SN_TIN3D`
+khi có DLL (tắt bằng `SANNEN_KHONG_NET=1`). Xây cả hai DLL: `powershell -ExecutionPolicy Bypass -File cad\dotnet\xay_palette.ps1`. Chi tiết, lược đồ, hiệu năng và checklist GUI: [MENU.md](MENU.md).

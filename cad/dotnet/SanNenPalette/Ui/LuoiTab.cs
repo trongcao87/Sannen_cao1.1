@@ -50,7 +50,7 @@ namespace SanNen.Palette.Ui
                 Nut("Áp dụng", ApDung),
                 Nut("Di chuyển…", delegate { GuiLenh("SN_DICHLUOI ", "Di chuyển lưới"); }),
                 Nut("Xoay…", delegate { GuiLenh("SN_XOAYLUOI ", "Xoay lưới"); }),
-                Nut("Vẽ lại lưới", delegate { GuiLenh("SN_VE ", "Vẽ lại kết quả"); }),
+                Nut("Vẽ lại lưới", delegate { Bao(CadLenh.VeLai() ?? "Vẽ lại kết quả bằng C# (SN_VE_NET) — xem dòng lệnh AutoCAD."); }),
                 Nut("Hộp thoại lưới…", delegate { GuiLenh("SN_LUOI ", "Mở hộp thoại lưới"); })));
             Than.Controls.Add(_canhBao);
             DungXong();

@@ -37,6 +37,22 @@ MAU_LAYER = {"SN-LUOI": 8, "SN-LUOI-NHAN": 3, "SN-LUOI-O": 2, "SN-RANH-DAODAP": 
              "SN-3DF-DO": 2, "SN-QC": 6, "SN-BANG": 7, "SN-MATCAT": 6}       # mốc xanh lá, đo vàng
 
 
+def hinh_luoi(luoi: dict) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    """Các đoạn thẳng của lưới ô vuông (cột trước, hàng sau) từ `grid.json["tham_so"]` — dùng cho kế hoạch vẽ JSON.
+    (Backend DXF/LISP còn bản chép riêng cùng công thức; sẽ hết khi gỡ backend LISP ở bước 4 của lộ trình.)"""
+    import math
+    ox, oy = luoi["goc_luoi"]
+    th = math.radians(luoi["goc_xoay_do"])
+    c, s = math.cos(th), math.sin(th)
+    U, V = [0.0], [0.0]
+    for w in luoi["cot_m"]:
+        U.append(U[-1] + w)
+    for h in luoi["hang_m"]:
+        V.append(V[-1] + h)
+    P = lambda u, v: (ox + u * c - v * s, oy + u * s + v * c)
+    return [(P(u, V[0]), P(u, V[-1])) for u in U] + [(P(U[0], v), P(U[-1], v)) for v in V]
+
+
 def kiem_dang_3d(dang: str) -> str:
     if dang not in DANG_3D:
         raise ValueError(f"dang phải là một trong {DANG_3D} — nhận được «{dang}»")

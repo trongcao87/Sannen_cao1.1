@@ -34,6 +34,30 @@ namespace SanNen.Palette.Services
             return Gui(ten + " ");
         }
 
+        // ---- lệnh VẼ bằng C# (SanNenDraw.dll — bước 2 của lộ trình). Có DLL cạnh palette thì gọi lệnh _NET, không thì lệnh LISP cũ.
+        public static bool CoDraw()
+        {
+            try
+            {
+                string dir = System.IO.Path.GetDirectoryName(typeof(CadLenh).Assembly.Location);
+                return System.IO.File.Exists(System.IO.Path.Combine(dir, "SanNenDraw.dll"));
+            }
+            catch (Exception) { return false; }
+        }
+
+        /// <summary>Vẽ lại MỌI nhóm kết quả của lô (xóa nhóm cũ của đúng lô trước). `(sn:nap-draw)` do sannen.lsp định nghĩa: NETLOAD SanNenDraw.dll một lần.</summary>
+        public static string VeLai()
+        {
+            if (!CoDraw()) return Gui("SN_VE ");
+            return Gui("(if sn:nap-draw (sn:nap-draw)) SN_VE_NET\n\n");        // dòng trống = nhóm mặc định "tất cả"
+        }
+
+        /// <summary>Xem mặt 3D (polyface): hỏi bề mặt trên dòng lệnh rồi SW Isometric + zoom + lưu view SN_TIN3D.</summary>
+        public static string Xem3D()
+        {
+            if (!CoDraw()) return Gui("SN_TIN3D ");
+            return Gui("(if sn:nap-draw (sn:nap-draw)) SN_TIN3D_NET ");
+        }
         /// <summary>Đặt một biến LISP chứa chuỗi ASCII rồi chạy lệnh (cách truyền giá trị vào lệnh LISP có xác nhận).</summary>
         public static string LenhCoBien(string bienLisp, string giaTri, string lenh)
         {

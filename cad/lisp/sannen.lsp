@@ -461,8 +461,26 @@
   (setq r (getkword (strcat "\n" cau (if mac-dinh-co "[Yes/No] <Yes>: " "[Yes/No] <No>: "))))
   (cond ((null r) mac-dinh-co) ((= r "Yes") T) (T nil)))
 
+;;; ---- SanNenDraw.dll (C#, bước 2 lộ trình KIEN-TRUC-TOI-UU): VẼ/XÓA bằng API từ kế hoạch JSON của Python -------------
+;;; Có cad\dotnet\bin\SanNenDraw.dll thì SN_VE, SN_XOA, SN_TIN3D ưu tiên lệnh .NET SN_VE_NET, SN_XOA_NET, SN_TIN3D_NET;
+;;; không có DLL (hoặc đặt biến môi trường SANNEN_KHONG_NET) thì chạy LISP cũ y nguyên. Gỡ LISP: bước 4.
+(setq *sn-draw-nap* nil)                                 ; đã NETLOAD SanNenDraw.dll trong phiên này?
+(defun sn:draw-dll ( / cad f)
+  (if (and (null (getenv "SANNEN_KHONG_NET")) (setq cad (sn:cfg "cad")))
+    (if (findfile (setq f (strcat cad "\\dotnet\\bin\\SanNenDraw.dll"))) f)))
+(defun sn:nap-draw ( / dll)                              ; T nếu dùng được các lệnh *_NET (NETLOAD một lần mỗi phiên)
+  (cond ((null (setq dll (sn:draw-dll))) nil)
+        (*sn-draw-nap* T)
+        (T (sn:bao "Đang nạp SanNenDraw.dll (NETLOAD). Nếu AutoCAD hỏi tin cậy DLL: chọn Always Load.")
+           (command "_.NETLOAD" dll)
+           (setq *sn-draw-nap* T))))
+
 (defun sn:ve ( / kq)                                     ; vẽ lại toàn bộ kết quả của lô
-  (if (sn:can-lot) (setq kq (sn:chay-ve "ve" ""))) kq)
+  (if (sn:can-lot)
+    (if (sn:nap-draw)
+      (command "_.SN_VE_NET" "")                         ; Enter = nhóm mặc định "tất cả"
+      (setq kq (sn:chay-ve "ve" ""))))
+  kq)
 (defun c:SN_VE () (sn:chay-lenh "SN_VE" 'sn:ve))
 
 (defun sn:l-verb (verb / kq them vb)
@@ -496,8 +514,10 @@
   (if (sn:can-lot)
     (progn
       (setq lo (sn:ma-lo))
-      (if (and lo (sn:xac-nhan (strcat "Xóa MỌI đối tượng kết quả SN của lô " lo " trong bản vẽ này? ") nil))
-        (sn:bao (strcat "Đã xóa " (itoa (sn:xoa-ket-qua lo nil nil)) " đối tượng kết quả."))))))
+      (cond
+        ((and lo (sn:nap-draw)) (command "_.SN_XOA_NET"))        ; C# tự đếm và HỎI Yes/No (chỉ lô + đợt hiện tại)
+        ((and lo (sn:xac-nhan (strcat "Xóa MỌI đối tượng kết quả SN của lô " lo " trong bản vẽ này? ") nil))
+         (sn:bao (strcat "Đã xóa " (itoa (sn:xoa-ket-qua lo nil nil)) " đối tượng kết quả.")))))))
 (defun c:SN_XOA () (sn:chay-lenh "SN_XOA" 'sn:l-xoa))
 
 
@@ -608,13 +628,22 @@
       (cond
         ((= ma 1)
          (setq bm (cond ((= *sn-t3d-bm* "0") "moc") ((= *sn-t3d-bm* "1") "do") (T "ca-hai")))
+         (if (sn:nap-draw)
+           ;; C#: vẽ polyface + bật lớp đã chọn + SW Isometric + zoom + lưu view SN_TIN3D; LISP chỉ còn "chỉ hiện 3D" và tô bóng
+           (progn
+             (command "_.SN_TIN3D_NET" (cond ((= bm "moc") "Moc") ((= bm "do") "Do") (T "Cahai")))
+             (if (= *sn-t3d-chi3d* "1")
+               (sn:bao (strcat "Đã tạm tắt " (itoa (sn:chi-hien-3d)) " lớp khác (chỉ ON/OFF, không đóng băng/xóa). "
+                               "Hiện lại: SN_TIN3D → Khôi phục lớp.")))
+             (if (= *sn-t3d-bong* "1") (sn:thu '(lambda () (command "_.VSCURRENT" "_E")))))
+         (progn
          (setq kq (sn:chay-ve "tin3d" (strcat "--be-mat " bm " --dang polyface")))
          (if (sn:get "ok" kq)
            (progn
              (if (= *sn-t3d-chi3d* "1")
                (sn:bao (strcat "Đã tạm tắt " (itoa (sn:chi-hien-3d)) " lớp khác (chỉ ON/OFF, không đóng băng/xóa). "
                                "Hiện lại: SN_TIN3D → Khôi phục lớp.")))
-             (sn:xem-3d *sn-t3d-iso* *sn-t3d-bong* (if (= bm "ca-hai") "ca" bm)))))
+             (sn:xem-3d *sn-t3d-iso* *sn-t3d-bong* (if (= bm "ca-hai") "ca" bm)))))))
         ((= ma 2) (sn:chay-ve "tin3d-tat" ""))
         ((= ma 3) (sn:bao (strcat "Đã bật lại " (itoa (sn:khoi-phuc-lop)) " lớp.")))
         ((= ma 4) (sn:l-xem3d))))))

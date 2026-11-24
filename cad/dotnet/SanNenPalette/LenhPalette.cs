@@ -7,6 +7,7 @@ using System.Text;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.Windows;
 using SanNen.Palette.Services;
+using CauHinh = SanNen.Draw.CauHinh;
 using SanNen.Palette.Ui;
 using Rt = Autodesk.AutoCAD.Runtime;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;

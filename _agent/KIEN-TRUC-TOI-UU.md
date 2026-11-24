@@ -92,5 +92,5 @@ Quy tắc chuyển: **không gỡ LISP cho tới khi C# qua checklist GUI của 
 ## 6. Điều chưa kiểm / rủi ro
 - Palette C# chưa từng chạy trong AutoCAD có giao diện; `SECURELOAD`/`TRUSTEDPATHS` có thể hỏi tin cậy DLL lần đầu.
 - `csc.exe` của .NET Framework 4.x chỉ hỗ trợ C# 5 — đủ cho add-in này, không dùng cú pháp mới.
-- Hiệu năng nạp hàng chục nghìn thực thể chưa đo.
+- Hiệu năng (đã đo ở bước 2, accoreconsole): 100.000 thực thể vẽ trong một transaction ≈ 1,4 s, cả lệnh gồm đọc JSON 14 MB ≈ 3,5 s; chưa đo trên bản vẽ thật có sẵn hàng triệu đối tượng.
 - Đề xuất "đọc lưới nhà thầu từ DXF" (RASOAT §3.4) chỉ làm nếu lô thật có lưới trong DXF.

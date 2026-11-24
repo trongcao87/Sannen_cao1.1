@@ -23,7 +23,7 @@ from sannen import cong, io_out, luoi as _luoi, luoi_sua, matcat, mcp_server, xu
 from sannen.config import doc_lot, nguong
 from sannen.paths import Lot
 
-from . import bo_cuc, ve
+from . import bo_cuc, ke_hoach, ve
 from .backend import NHOM_LOP
 from .backend_lisp import BackendLisp
 
@@ -210,6 +210,40 @@ def l_ve(a, lot):
     return du, "Đã sinh lệnh vẽ — nạp file .lsp để vẽ vào bản vẽ"
 
 
+def l_ve_ke_hoach(a, lot):
+    """Kế hoạch vẽ JSON cho add-in C# (SanNenDraw.dll). CHỈ ĐỌC lô: ghi kế hoạch vào --ke-hoach (hoặc `-` = stdout)."""
+    if not a.ke_hoach:
+        raise Loi("Thiếu --ke-hoach (file JSON kế hoạch vẽ; `-` = in ra stdout)")
+    che_do = a.che_do or "ve"
+    dang = _dang(a)
+    try:
+        if che_do == "ve":
+            lop = [x.strip() for x in a.lop.split(",") if x.strip()] if a.lop else None
+            kh = ke_hoach.tao_ke_hoach(lot.root, lop, dang)
+        elif che_do == "tin3d":
+            kh = ke_hoach.tao_ke_hoach_tin3d(lot.root, a.be_mat or "ca-hai", dang)
+        elif che_do == "mat-cat":
+            if not a.ten:
+                raise Loi("--che-do mat-cat cần --ten <tên mặt cắt>")
+            kh = ke_hoach.tao_ke_hoach_mat_cat(lot.root, a.ten, _en(a.goc_ve, "--goc-ve") if a.goc_ve else None,
+                                               float(a.ty_le_dung or 5.0), a.trai_x, a.duoi_y)
+        else:
+            raise Loi("--che-do phải là ve, tin3d hoặc mat-cat")
+    except (FileNotFoundError, ValueError) as e:
+        raise Loi(str(e))
+    b = ke_hoach.ghi_json(kh)
+    if a.ke_hoach == "-":
+        sys.stdout.buffer.write(b)
+    else:
+        p = Path(a.ke_hoach)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b)
+    ts = kh["tom_tat"]
+    return {"ke_hoach": a.ke_hoach, "che_do": che_do, "so_doi_tuong": ts["so_doi_tuong"], "theo_loai": ts["theo_loai"],
+            "so_byte": len(b), "ma_lo": kh["truy_vet"]["ma_lo"], "dot": kh["truy_vet"]["dot"]}, \
+        f"Kế hoạch vẽ: {ts['so_doi_tuong']} đối tượng"
+
+
 def l_tin3d(a, lot):
     chon = {"moc": ["moc"], "do": ["do"], "ca-hai": ["moc", "do"]}.get(a.be_mat)
     if chon is None:
@@ -344,18 +378,8 @@ def l_mat_cat(a, lot):
     kq = matcat.thuc_hien(lot, pa, pb, float(a.buoc or 1.0), ten)
     ty_le = float(a.ty_le_dung or 5.0)
     try:
-        if a.goc_ve:                                        # người chọn điểm đặt: luôn được ưu tiên
-            gv, mac_dinh = _en(a.goc_ve, "--goc-ve"), False
-        else:                                               # mặc định: DƯỚI toàn bộ kết quả của lô + đệm ≥ 30 m
-            trai_x, duoi_y = a.trai_x, a.duoi_y
-            if trai_x is None or duoi_y is None:            # LISP không đo được bản vẽ → dùng hộp bao lô + bảng in
-                hb = io_out.doc_json(lot.process_dir / "lo.json")["hop_bao"]
-                bp = lot.output_dir / "bang_in_cad.json"
-                tx, dy = bo_cuc.duoi_mac_dinh_lot(hb, io_out.doc_json(bp) if bp.exists() else None)
-                trai_x = tx if trai_x is None else trai_x
-                duoi_y = dy if duoi_y is None else duoi_y
-            gv, mac_dinh = bo_cuc.goc_mat_cat_mac_dinh(kq, ty_le, float(trai_x), float(duoi_y)), True
-        ent = bo_cuc.mat_cat_ent(kq, gv, ty_le)
+        ent, gv, mac_dinh = ke_hoach.bo_cuc_mat_cat(lot, kq, ty_le, _en(a.goc_ve, "--goc-ve") if a.goc_ve else None,
+                                                    a.trai_x, a.duoi_y)
     except ValueError as e:
         raise Loi(str(e))
     vung = bo_cuc.hop_bao_ent(ent[3:])
@@ -500,7 +524,8 @@ def l_duyet(a, lot):
     return None, van_ban
 
 
-LENH = {"trang-thai": l_trang_thai, "ve": l_ve, "tin3d": l_tin3d, "tin3d-tat": l_tin3d_tat, "xem3d": l_xem3d,
+LENH = {"trang-thai": l_trang_thai, "ve": l_ve, "ve-ke-hoach": l_ve_ke_hoach, "tin3d": l_tin3d, "tin3d-tat": l_tin3d_tat,
+        "xem3d": l_xem3d,
         "luoi-doc": l_luoi_doc, "thong-tin": l_thong_tin,
         "luoi-sua": l_luoi_sua, "luoi-ve-lai-lot-yaml": l_luoi_ve_lai_lot_yaml, "mat-cat": l_mat_cat, "bang": l_bang,
         "chay": l_chay, "canh-bao": l_canh_bao, "o-tai": l_o_tai, "dong-bo": l_dong_bo,
@@ -515,6 +540,8 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--ra", required=True, help="file kết quả (s-expression AutoLISP; JSON nếu có --json)")
     ap.add_argument("--json", action="store_true", help="ghi kết quả dạng JSON UTF-8 (cho palette C#) thay vì s-expression")
     ap.add_argument("--lsp")
+    ap.add_argument("--ke-hoach", help="file kế hoạch vẽ JSON (lệnh ve-ke-hoach); '-' = stdout")
+    ap.add_argument("--che-do", help="ve-ke-hoach: ve (mặc định) | tin3d | mat-cat")
     ap.add_argument("--lop")
     ap.add_argument("--be-mat")
     ap.add_argument("--lenh", dest="lenh_sua")

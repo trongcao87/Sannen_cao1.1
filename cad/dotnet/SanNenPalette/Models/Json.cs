@@ -1,69 +1,26 @@
-﻿// Đọc JSON tối giản (System.Web.Extensions của .NET 4 — không thêm thư viện). Lớp THUẦN, không dùng API AutoCAD.
-using System;
-using System.Collections;
+﻿// Đọc JSON tối giản — lớp CHUYỂN TIẾP mỏng tới SanNen.Draw.J (SanNenDraw.dll, lớp thuần dùng chung với DrawEngine).
+// Giữ tên SanNen.Palette.Models.J để mã của các tab không phải đổi. Lớp THUẦN, không dùng API AutoCAD.
 using System.Collections.Generic;
-using System.Globalization;
-using System.Web.Script.Serialization;
 
 namespace SanNen.Palette.Models
 {
     public static class J
     {
-        public static object Parse(string s)
-        {
-            JavaScriptSerializer js = new JavaScriptSerializer();
-            js.MaxJsonLength = int.MaxValue;
-            js.RecursionLimit = 200;
-            return js.DeserializeObject(s);
-        }
+        public static object Parse(string s) { return SanNen.Draw.J.Parse(s); }
 
         /// <summary>Đi theo chuỗi khoá từ gốc; thiếu khoá → null.</summary>
-        public static object Get(object o, params string[] khoa)
-        {
-            foreach (string k in khoa)
-            {
-                IDictionary<string, object> d = o as IDictionary<string, object>;
-                if (d == null || !d.ContainsKey(k)) return null;
-                o = d[k];
-            }
-            return o;
-        }
+        public static object Get(object o, params string[] khoa) { return SanNen.Draw.J.Get(o, khoa); }
 
-        public static string S(object o, string macDinh)
-        {
-            if (o == null) return macDinh;
-            if (o is bool) return ((bool)o) ? "true" : "false";
-            if (o is IConvertible) return Convert.ToString(o, CultureInfo.InvariantCulture);
-            return macDinh;
-        }
+        public static string S(object o, string macDinh) { return SanNen.Draw.J.S(o, macDinh); }
 
-        public static string S(object o) { return S(o, ""); }
+        public static string S(object o) { return SanNen.Draw.J.S(o); }
 
-        public static double? D(object o)
-        {
-            if (o == null || o is string || o is bool || !(o is IConvertible)) return null;
-            try { return Convert.ToDouble(o, CultureInfo.InvariantCulture); }
-            catch (Exception) { return null; }
-        }
+        public static double? D(object o) { return SanNen.Draw.J.D(o); }
 
-        public static int I(object o, int macDinh)
-        {
-            double? d = D(o);
-            return d.HasValue ? (int)Math.Round(d.Value) : macDinh;
-        }
+        public static int I(object o, int macDinh) { return SanNen.Draw.J.I(o, macDinh); }
 
-        public static bool B(object o)
-        {
-            return o is bool && (bool)o;
-        }
+        public static bool B(object o) { return SanNen.Draw.J.B(o); }
 
-        public static List<object> L(object o)
-        {
-            List<object> ra = new List<object>();
-            IEnumerable e = o as IEnumerable;
-            if (e == null || o is string || o is IDictionary<string, object>) return ra;
-            foreach (object x in e) ra.Add(x);
-            return ra;
-        }
+        public static List<object> L(object o) { return SanNen.Draw.J.L(o); }
     }
 }

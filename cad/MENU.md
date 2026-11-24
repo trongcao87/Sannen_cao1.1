@@ -135,7 +135,7 @@ AutoCAD: thêm DLL vào APPLOAD → Startup Suite (hoặc để `sannen.lsp` n�
 |---|---|---|
 | **QL ĐH** | Cây: Lô → Mô hình địa hình (MHTN mặt mốc / MHTK mặt đo, tam giác thiếu dữ liệu, đứt gãy, đồng mức, biên lô, loại trừ) → Lưới ô → Ranh đào–đắp → Mặt cắt (từng mặt cắt) → Bảng in. Hộp kiểm = Hiện/Ẩn layer (chỉ `IsOff`; không đóng băng/xoá; không đổi layer hiện hành; chỉ `SN-*`); số đối tượng của đúng lô+đợt. Chuột phải: Hiện/Ẩn · Chỉ hiện nhóm này · Zoom tới nhóm · Chọn đối tượng nhóm; bấm đúp = Zoom | Hiện/Ẩn tất cả SAN NỀN |
 | **Biên lô** | số đỉnh, chu vi, diện tích, vùng loại trừ | Hiện/Ẩn biên · Zoom · `SN_NHAP` · `SN_LO` |
-| **Lưới** | thông số lưới, ô thiếu dữ liệu, tổng diện tích ô vs lô; ô nhập Cột / Hàng (Số×KT,…) / Bù dữ liệu (m) | Áp dụng (`SN_LUOIAPDUNG`) · `SN_DICHLUOI` · `SN_XOAYLUOI` · `SN_VE` · `SN_LUOI` |
+| **Lưới** | thông số lưới, ô thiếu dữ liệu, tổng diện tích ô vs lô; ô nhập Cột / Hàng (Số×KT,…) / Bù dữ liệu (m) | Áp dụng (`SN_LUOIAPDUNG`) · `SN_DICHLUOI` · `SN_XOAYLUOI` · Vẽ lại lưới (`SN_VE_NET` khi có `SanNenDraw.dll`, không thì `SN_VE`) · `SN_LUOI` |
 | **Mặt cắt** | các mặt cắt đã tạo (dài, đào, đắp, thiếu) | `SN_MATCAT` · Zoom tới · Zoom tuyến A–B · Xoá (`SN_XOAMATCAT`, chỉ xoá bản vẽ, hỏi Yes/No) |
 | **Khối lượng** | số nộp (lưới), số kiểm (lăng trụ), chênh %, ô lệch lớn, ba cổng, cảnh báo kết quả cũ | `SN_TINH` · `SN_BANG` · `SN_EXCEL` · `SN_XEM3D` · `SN_DUYET` (palette **không** tự duyệt cổng; chốt chặn ở `core/sannen/cong.py`) |
 | **Cảnh báo** | cảnh báo QC, việc cần làm (`viec_can_lam.md`), kết quả cũ; bấm đúp = zoom tới điểm | `SN_CANHBAO` |
@@ -143,6 +143,39 @@ AutoCAD: thêm DLL vào APPLOAD → Startup Suite (hoặc để `sannen.lsp` n�
 Làm mới: nút **↻ Làm mới** đầu mỗi tab; tự làm mới (trễ 0,6 s) khi một lệnh `SN_*` kết thúc và khi đổi bản vẽ. Python/cấu hình lỗi → dòng đỏ chỉ rõ
 `sannen.cfg` (`python=`, `cad=`, `lot=`); Hiện/Ẩn layer vẫn dùng được. Mã C# theo lớp (`Models` · `Services/PythonBridge` · `Drawing` · `Ui/*Tab`);
 các chỗ gọi lệnh LISP là tạm thời, sẽ chuyển sang C# ở bước 3 của `_agent/KIEN-TRUC-TOI-UU.md`.
+## SanNenDraw — vẽ / xóa / vẽ lại bằng API từ KẾ HOẠCH JSON (bước 2 lộ trình kiến trúc tối ưu)
+
+Python **quyết định vẽ gì**, C# **chỉ vẽ**. Lệnh cầu nối mới `ve-ke-hoach` (chỉ ĐỌC lô) xuất một file JSON `phien_ban: 1`; assembly thứ hai
+`cad/dotnet/SanNenDraw/` → `SanNenDraw.dll` đọc và vẽ trong **một DocumentLock + một Transaction** (một lần Ctrl+Z hoàn tác cả lần vẽ).
+Chỉ tham chiếu `accoremgd.dll` + `acdbmgd.dll` (không `acmgd`, không WinForms) nên cũng NETLOAD được trong `accoreconsole.exe`.
+
+**Xây** (một lệnh xây cả hai DLL, `SanNenDraw.dll` trước vì palette tham chiếu nó; hai file phải nằm cùng `cad\dotnet\bin`):
+
+    powershell -ExecutionPolicy Bypass -File cad\dotnet\xay_palette.ps1      # = xay_draw.ps1 rồi palette
+    powershell -ExecutionPolicy Bypass -File cad\dotnet\xay_draw.ps1         # chỉ SanNenDraw.dll
+
+| Lệnh .NET (nhóm `SANNEN_DRAW`) | Việc | Thay cho |
+|---|---|---|
+| `SN_VE_NET` | hỏi nhóm (`luoi,nhan,o,ranh,3d,bang`; **Enter = tất cả**) → Python dựng kế hoạch → xóa nhóm cũ của đúng lô+đợt → vẽ → in số đối tượng xóa/vẽ theo loại | `SN_VE` |
+| `SN_XOA_NET` | đếm rồi **hỏi Yes/No** (mặc định No, RULES 4) → xóa đối tượng có XDATA khớp **lô + đợt hiện tại**; lô khác, đợt khác, nguồn không đụng | `SN_XOA` |
+| `SN_XOA_NET_Y` | như trên **không hỏi** (cho kịch bản / LISP đã hỏi người dùng rồi) | — |
+| `SN_TIN3D_NET` | hỏi Mốc / Đo / Cả hai → vẽ polyface (mỗi bề mặt MỘT đối tượng), bật lớp đã chọn + `SN-QC`, tắt lớp còn lại → SW Isometric + zoom + lưu view `SN_TIN3D`. **Không** ẩn layer khác (việc đó là của palette: Hiện/Ẩn) | `SN_TIN3D` (phần vẽ + view) |
+| `SN_KEHOACH_NET` | vẽ thẳng một file kế hoạch JSON có sẵn (kịch bản, kiểm thử) | — |
+
+**Chuyển tự động trong LISP:** nếu có `cad\dotnet\bin\SanNenDraw.dll`, `SN_VE`, `SN_XOA`, `SN_TIN3D` (và các chỗ LISP tự gọi `sn:ve`, như sau `SN_TINH`)
+tự `NETLOAD` rồi gọi bản `_NET`; hộp thoại `SN_TIN3D` vẫn là DCL (chọn bề mặt / chỉ hiện 3D / tô bóng). **Thiếu DLL, hoặc đặt biến môi trường
+`SANNEN_KHONG_NET=1`, thì chạy LISP cũ y nguyên.** Nút palette *Vẽ lại lưới* (tab Lưới) và *Xem 3D* (tab QL ĐH) gọi `SN_VE_NET` / `SN_TIN3D_NET` khi có DLL.
+LISP và DCL chỉ gỡ ở bước 4 của lộ trình.
+
+**Kế hoạch vẽ** (`python -X utf8 -m sannen_cad.cau_noi ve-ke-hoach --lot <lô> --ke-hoach <file.json> --ra <kq.json> --json [--lop luoi,nhan,o,ranh,3d,bang] [--dang polyface|3dface] [--che-do ve|tin3d|mat-cat --be-mat moc|do|ca-hai --ten <mặt cắt>]`;
+hoặc trực tiếp `python -m sannen_cad.ke_hoach --lot <lô> --ra <file>`). Cùng lô + tham số → **cùng từng byte**. Lược đồ đầy đủ ở docstring `cad/sannen_cad/ke_hoach.py`:
+`phien_ban`, `lenh`, `truy_vet {ma_lo, dot, hash_dau_vao}`, `xoa [{loai[, ex]}]`, `lop [{ten, mau, tat, dat_mau}]`,
+`doi_tuong [{kieu: polyface|3dface|polyline|text|mtext, loai, lop, mau?, ex?, …}]`, `hien_lop`, `tom_tat`. Toạ độ làm tròn **4 chữ số thập phân**.
+Mỗi đối tượng mang XDATA appid `SANNEN` đúng cấu trúc `sannen.lsp`: `(mã lô)(đợt)(hash)(loại)("k=v")…` — nên SN_QL, palette và `SN_XOA` đang có nhận ra đối tượng do C# vẽ.
+Kết quả mỗi lệnh in ra dòng lệnh và ghi `sn_draw_kq.json` (thư mục `SANNEN_TMP` hoặc `%TEMP%`).
+
+**Hiệu năng đo được** (accoreconsole, AutoCAD 2022, 100.000 thực thể = 60.000 polyline + 39.999 text + 1 polyface 20.100 đỉnh, JSON 14 MB):
+vẽ 1,4 s trong một transaction; vẽ lần hai: purge 100.000 đối tượng 1,0 s + vẽ lại 1,3 s; cả lệnh (gồm đọc JSON) ≈ 3,5 s.
 ## Đã kiểm / chưa kiểm
 
 | | Trạng thái |
@@ -163,6 +196,10 @@ các chỗ gọi lệnh LISP là tạm thời, sẽ chuyển sang C# ở bước
 | Chữ có dấu trong DCL hiển thị đúng (set_tile trên text/nút/popup), bố cục các hộp thoại mới, ghi chú nhiều dòng | ❌ cần giao diện — chưa kiểm |
 | Mở trình xem 3D (HTML) từ `SN_XEM3D`/nút: phụ thuộc verb `xem3d` của lõi và trình duyệt mặc định | ❌ chưa kiểm cuối-cuối (chỉ kiểm dòng lệnh do LISP/cầu nối dựng) |
 | Bản vẽ rất lớn: thời gian nạp polyface hàng chục nghìn mặt (đã giảm số đối tượng từ hàng nghìn xuống 2) | ❌ chưa đo trên bản vẽ thật |
+| **SanNenDraw (bước 2):** `ve-ke-hoach` đúng lược đồ, deterministic (hai lần cùng byte), chỉ đọc lô, số đối tượng khớp backend DXF; biên dịch sạch `SanNenDraw.dll` (chỉ accoremgd+acdbmgd) và palette tham chiếu nó | ✅ `test_gd17_drawengine.py` |
+| **SanNenDraw trong AutoCAD 2022 thật không giao diện:** NETLOAD → `SN_KEHOACH_NET` / `SN_VE_NET` / `SN_XOA_NET(_Y)` / `SN_TIN3D_NET`: đếm theo layer + XDATA khớp kế hoạch **và khớp từng đối tượng do file .lsp vẽ**; vẽ hai lần không nhân đôi; purge chỉ đúng lô+đợt; mặt 3D = 1 polyface/bề mặt, layer 3D tắt, view `SN_TIN3D`; LISP `SN_VE`/`SN_XOA` chuyển sang `_NET` khi có DLL và lùi về LISP khi tắt; 100.000 thực thể | ✅ `test_gd17_drawengine.py` (accoreconsole) |
+| **SanNenDraw trên giao diện:** hộp xác nhận Yes/No hiển thị, `SN_TIN3D` (DCL) → `SN_TIN3D_NET` → góc nhìn SW Isometric nhìn thấy được, nút palette *Vẽ lại lưới* / *Xem 3D*, tô bóng `VSCURRENT` sau `SN_TIN3D_NET`, hoàn tác (Ctrl+Z) một bước | ❌ cần AutoCAD có giao diện — chưa kiểm |
+| Kế hoạch vẽ mặt cắt (`--che-do mat-cat`) có kiểm ở mức JSON; **lệnh C# vẽ mặt cắt (`SN_MATCAT`) chưa chuyển sang C#** (bước 3) | 🟡 |
 
 ### Checklist 5 phút để bạn kiểm giao diện
 1. `APPLOAD` → `sannen.lsp`: có menu **SAN NỀN**? (không có thì gõ `SN`).
@@ -182,3 +219,11 @@ các chỗ gọi lệnh LISP là tạm thời, sẽ chuyển sang C# ở bước
 3. Tab **QL ĐH**: số đối tượng đúng lô/đợt; bỏ tích *Lưới ô* → lưới biến mất, tích lại → hiện; layer hiện hành không bị tắt; chuột phải *Chỉ hiện nhóm này*, *Zoom tới nhóm*, *Chọn đối tượng nhóm*; bấm đúp = zoom.
 4. Tab **Lưới**: nhập `1x10,4x22.5` → [Áp dụng] → dòng lệnh hỏi Yes/No (trả lời No thì lưới giữ nguyên). Tab **Mặt cắt**: [Xoá mặt cắt này] hỏi Yes/No.
 5. Tab **Khối lượng / Cảnh báo / Biên lô**: số khớp `SN_TRANGTHAI`; bấm đúp một cảnh báo có toạ độ → zoom tới điểm. Tắt Python (đổi `python=` sai) → dòng đỏ nêu `sannen.cfg`, Hiện/Ẩn vẫn chạy.
+
+### Checklist SanNenDraw (5 phút, cần AutoCAD có giao diện)
+1. Xây hai DLL (`xay_palette.ps1`, đóng AutoCAD trước nếu nó đang giữ DLL cũ) → "XONG" hai lần. Trong AutoCAD: `APPLOAD` `sannen.lsp`.
+2. Gõ `SN_VE` → dòng lệnh báo "Đang nạp SanNenDraw.dll" (lần đầu; chọn *Always Load* nếu hỏi) → hỏi nhóm: Enter. Phải thấy dòng "Đã xóa … đối tượng cũ … đã vẽ … đối tượng" và lưới/nhãn/ô/ranh hiện ra.
+3. Gõ `SN_VE` lần nữa → "Đã xóa N … đã vẽ N" cùng N (không nhân đôi). `U` (hoàn tác) một lần → lần vẽ vừa rồi biến mất trọn.
+4. `SN_TIN3D` → *Cả hai* → [Hiển thị]: hai polyface, góc nhìn SW Isometric vừa khít, view `SN_TIN3D` có trong `-VIEW`. Gõ `SN_TIN3D_NET` trực tiếp → hỏi Mốc/Đo/Cả hai.
+5. `SN_XOA` → báo "Xóa N đối tượng … [Yes/No] <No>": trả lời No → không đổi; Yes → sạch lô này, lô khác (nếu có trong bản vẽ) còn nguyên.
+6. Palette → tab **Lưới** [Vẽ lại lưới], tab **QL ĐH** [Xem 3D]: thấy cùng kết quả như trên.

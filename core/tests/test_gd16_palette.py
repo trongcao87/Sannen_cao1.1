@@ -89,6 +89,7 @@ def test_lenh_lisp_ma_nut_goi_deu_ton_tai():
                 "SN_XOAYLUOI", "SN_VE", "SN_NHAP", "SN_LO", "SN_LUOIAPDUNG", "SN_XOAMATCAT"):
         assert ten in goi, f"palette không gọi {ten}?"
     co = set(re.findall(r"^\(defun\s+c:(SN[A-Z0-9_]*)\s*\(\)", LSP_TXT, re.M))
+    goi = {g for g in goi if not g.endswith("_NET")}        # lệnh .NET của SanNenDraw.dll (SN_VE_NET...) — kiểm ở test_gd17_drawengine.py
     assert goi <= co, f"lệnh palette gọi mà LISP chưa định nghĩa: {sorted(goi - co)}"
     # lệnh LISP mới: nạp DLL rồi gọi lệnh .NET tên khác (không đệ quy), có trong menu thả xuống và menu dòng lệnh SN
     assert "(defun c:SN_PALETTE ()" in LSP_TXT and '"_.NETLOAD"' in LSP_TXT and '"_.SN_PALETTE_MO"' in LSP_TXT
@@ -162,7 +163,17 @@ def test_bien_dich_sach(tmp_path):
     out = tmp_path / "SanNenPalette.dll"
     wpf = CSC.parent / "WPF"
     rsp = tmp_path / "a.rsp"
-    dong = ["/nologo", "/target:library", "/codepage:65001", "/utf8output", f"/out:{out}"]
+    # SanNenDraw.dll (lớp vẽ/cầu nối thuần) phải có trước: palette tham chiếu nó (bước 2 của lộ trình)
+    draw = tmp_path / "SanNenDraw.dll"
+    rd = tmp_path / "d.rsp"
+    dd = ["/nologo", "/target:library", "/codepage:65001", "/utf8output", f"/out:{draw}"]
+    dd += [f"/reference:{ACAD / d}" for d in ("accoremgd.dll", "acdbmgd.dll")]
+    dd += ["/reference:System.dll", "/reference:System.Core.dll", "/reference:System.Web.Extensions.dll"]
+    dd += [str(p) for p in sorted((DOTNET / "SanNenDraw").rglob("*.cs"))]
+    rd.write_text("\n".join(f'"{d}"' if " " in d or "\\" in d else d for d in dd), encoding="utf-8")
+    r0 = subprocess.run([str(CSC), f"@{rd}"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+    assert r0.returncode == 0 and draw.exists(), r0.stdout + r0.stderr
+    dong = ["/nologo", "/target:library", "/codepage:65001", "/utf8output", f"/out:{out}", f"/reference:{draw}"]
     dong += [f"/reference:{ACAD / d}" for d in ("acmgd.dll", "accoremgd.dll", "acdbmgd.dll")]
     dong += ["/reference:System.dll", "/reference:System.Core.dll", "/reference:System.Drawing.dll",
              "/reference:System.Windows.Forms.dll", "/reference:System.Web.Extensions.dll",

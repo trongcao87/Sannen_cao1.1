@@ -1,7 +1,7 @@
-﻿// CHỖ DÀNH CHO DrawEngine (bước 2 của lộ trình, _agent/KIEN-TRUC-TOI-UU.md §5): thực thi "kế hoạch vẽ JSON" do Python
-// xuất (lệnh `ve-ke-hoach`) bằng API AutoCAD — polyface, polyline, text, bảng có XDATA "SANNEN"; vẽ/purge theo đúng lô+đợt.
-// Hiện CHƯA làm: việc vẽ vẫn do LISP (SN_VE, SN_TIN3D...) thực hiện. Lớp này chỉ giữ chỗ để các tab không phụ thuộc cách vẽ.
-// Nguyên tắc: DrawEngine KHÔNG tính toán — chỉ vẽ đúng những gì kế hoạch ghi.
+﻿// DrawEngine THẬT nằm ở SanNenDraw.dll (cad/dotnet/SanNenDraw/DrawEngine.cs, namespace SanNen.Draw, không phụ thuộc giao diện):
+// thực thi "kế hoạch vẽ JSON" do Python xuất (`ve-ke-hoach`) bằng API AutoCAD — polyface, polyline, text có XDATA "SANNEN";
+// vẽ/purge theo đúng lô+đợt. Palette KHÔNG vẽ trực tiếp: các nút "Vẽ lại", "Xem 3D" gọi lệnh SN_VE_NET / SN_TIN3D_NET (xem CadLenh).
+// Lớp này chỉ giữ chỗ để cấu trúc thư mục (Services/Models/Drawing/Ui) không đổi.
 namespace SanNen.Palette.Drawing
 {
     public static class DrawEngine

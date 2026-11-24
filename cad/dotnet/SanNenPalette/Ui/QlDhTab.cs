@@ -50,7 +50,8 @@ namespace SanNen.Palette.Ui
 
             FlowLayoutPanel hang = HangNut(
                 Nut("Hiện tất cả SAN NỀN", delegate { HienTatCa(true); }),
-                Nut("Ẩn tất cả", delegate { HienTatCa(false); }));
+                Nut("Ẩn tất cả", delegate { HienTatCa(false); }),
+                Nut("Xem 3D", delegate { Bao(CadLenh.Xem3D() ?? "Xem 3D bằng C# (SN_TIN3D_NET) — chọn bề mặt trên dòng lệnh AutoCAD."); }));
             Than.Controls.Add(_cay);
             Than.Controls.Add(hang);
             DungXong();
