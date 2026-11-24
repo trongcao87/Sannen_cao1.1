@@ -19,6 +19,8 @@ tuân thủ 12 điều trong đó — chúng là ràng buộc nghiệp vụ, kh�
    ngoại tiếp làm mất gần hết chữ số có nghĩa. Bỏ bước này là nguồn lỗi khó tìm
    nhất của cả dự án.
 
+**Kiến trúc và phân vai (Người · Agent · Tool · Add-in C#):** xem `_agent/KIEN-TRUC-TOI-UU.md` — C# là lớp CAD duy nhất, lõi Python giữ nguyên.
+
 ## Lộ trình — làm theo thứ tự, mỗi giai đoạn một commit
 
 | GĐ | Nội dung | Điều kiện qua cửa |
@@ -49,6 +51,8 @@ bỏ ràng buộc ở bản đầu (chuyển đứt gãy thành chuỗi điểm 
     cd core && pip install -e ".[dev]"
     python -m sannen.cli nhap --lot ../projects/KDT-DaiThanh/lots/01-CGP --preview
 
-Menu **SAN NỀN** trong AutoCAD (xem 3D Face, hiệu chỉnh lưới, mặt cắt, bảng biểu, duyệt cổng): `cad/MENU.md`.
+Menu **SAN NỀN** trong AutoCAD — bắt đầu từ bảng điều khiển trung tâm `SN_QL` (hiện/ẩn nhóm, số liệu TIN/lưới/khối lượng, nhảy sang thao tác) — (xem 3D Face, hiệu chỉnh lưới, mặt cắt, bảng biểu, duyệt cổng): `cad/MENU.md`.
 
 Chuỗi đầy đủ: `nhap` → `mat` · `lo` → `luoi` → (`hieuchinh`) → `tinh [--sweep]` → `xuat`; MCP: `sannen-mcp`; CAD: `cad/README.md`.
+
+Palette dock nhiều tab (add-in .NET): xây `cad\dotnet\xay_palette.ps1` một lần, trong AutoCAD gõ `SN_PALETTE` — xem `cad/MENU.md` mục Palette; C# chỉ hiển thị, tính vẫn ở lõi.

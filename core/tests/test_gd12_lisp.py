@@ -26,8 +26,8 @@ CAC_LENH_BAT_BUOC = [
     "SN_LOT", "SN_TRANGTHAI", "SN_NHAP", "SN_MAT", "SN_LO", "SN_LUOITINH", "SN_TINH", "SN_VE", "SN_XOA",
     "SN_TIN3D", "SN_XEM3D", "SN_LUOI", "SN_DOICOT", "SN_CHENCOT", "SN_XOACOT", "SN_DOIHANG", "SN_CHENHANG", "SN_XOAHANG",
     "SN_DICHLUOI", "SN_XOAYLUOI", "SN_CAPDO", "SN_NANGCD", "SN_SUADINH", "SN_MATCAT", "SN_BANG", "SN_EXCEL",
-    "SN_CANHBAO", "SN_CONGO", "SN_DONGBO", "SN_DUYET", "SN_MENU", "SN"]
-HOP_THOAI = ["sn_tin3d", "sn_luoi", "sn_capdo", "sn_matcat", "sn_bang", "sn_canhbao", "sn_duyet"]
+    "SN_CANHBAO", "SN_CONGO", "SN_DONGBO", "SN_DUYET", "SN_MENU", "SN", "SN_QL"]
+HOP_THOAI = ["sn_ql", "sn_tin3d", "sn_luoi", "sn_capdo", "sn_matcat", "sn_bang", "sn_canhbao", "sn_duyet"]
 
 
 # ======================================================================================== (a) TĨNH
@@ -106,7 +106,7 @@ def test_dcl_cac_hop_thoai_va_khoa_duy_nhat():
     cho_phep_loai = {"text", "boxed_column", "boxed_radio_column", "row", "column", "edit_box", "popup_list",
                      "list_box", "radio_button", "toggle", "button"}
     cho_phep_tt = {"key", "label", "value", "width", "height", "edit_width", "is_default", "is_cancel",
-                   "multiple_select"}
+                   "multiple_select", "fixed_width_font", "tabs", "tab_truncate"}
     for ten, d in ds.items():
         trung = {k for k in d["khoa"] if d["khoa"].count(k) > 1}
         assert not trung, f"{ten}: key trùng {trung}"

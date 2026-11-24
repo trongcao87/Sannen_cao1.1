@@ -11,6 +11,7 @@ lệnh ghi thêm file `--lsp` (BackendLisp) để LISP `(load)`. Mọi con số 
 """
 from __future__ import annotations
 import argparse
+import json
 import math
 import re
 import sys
@@ -18,7 +19,7 @@ from pathlib import Path
 
 import yaml
 
-from sannen import io_out, luoi as _luoi, luoi_sua, matcat, mcp_server, xuat
+from sannen import cong, io_out, luoi as _luoi, luoi_sua, matcat, mcp_server, xuat
 from sannen.config import doc_lot, nguong
 from sannen.paths import Lot
 
@@ -243,6 +244,36 @@ def l_tin3d_tat(a, lot):
     return None, "Đã tắt mặt 3D"
 
 
+def _viec_can_lam(lot: Lot) -> list[dict]:
+    """Các mục `## <mã> · <loại> · <mức>` của 10_process/viec_can_lam.md (kèm dòng mô tả đầu). Không có file → []."""
+    p = lot.process_dir / "viec_can_lam.md"
+    if not p.is_file():
+        return []
+    ra: list[dict] = []
+    cho_mo_ta = False
+    for d in p.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^##\s+(\S+)\s+·\s+(\S+)\s+·\s+(\S+)", d)
+        if m:
+            ra.append({"ma": m.group(1), "loai": m.group(2), "muc": m.group(3), "mo_ta": ""})
+            cho_mo_ta = True
+        elif cho_mo_ta and d.strip() and not d.startswith("-"):
+            ra[-1]["mo_ta"] = d.strip()
+            cho_mo_ta = False
+    return ra
+
+
+def l_thong_tin(a, lot):
+    """Số liệu cho bảng điều khiển SN_QL: chỉ ĐỌC các file của lô (không tính, không ghi). Thiếu file → «Chưa có»."""
+    from sannen import thong_tin as _tt
+    tt = _tt.thong_tin(lot)
+    if getattr(a, "json", False):
+        # Hợp đồng với palette C# (cad/dotnet): đủ số liệu có cấu trúc + dòng chữ đã định dạng + cảnh báo + việc cần làm.
+        return {**tt, "nhom": _tt.dong_hien_thi(tt), "bien_dong": _tt.dong_bien(tt),
+                "canh_bao": l_canh_bao(a, lot)[0], "viec_can_lam": _viec_can_lam(lot)}, ""
+    return {"lo": tt["lo"], "buoc": tt["buoc"], "buoc_ke_tiep": tt["buoc_ke_tiep"], "cong": tt["cong"],
+            "canh_bao_cu": tt["canh_bao_cu"], "nhom": _tt.dong_hien_thi(tt)}, ""
+
+
 def l_luoi_doc(a, lot):
     if not (lot.process_dir / "grid.json").exists():
         raise Loi("Chưa có grid.json — chạy luoi trước")
@@ -462,7 +493,7 @@ def l_o_tai(a, lot):
 
 
 def l_duyet(a, lot):
-    van_ban, loi = mcp_server.duyet_cong({"lot": str(lot.root), "cong": a.cong, "nguoi_duyet": a.nguoi or "",
+    van_ban, loi = cong.duyet_cong({"lot": str(lot.root), "cong": a.cong, "nguoi_duyet": a.nguoi or "",
                                           "bang_chung": a.bang_chung or ""})
     if loi:
         raise Loi(van_ban)
@@ -470,7 +501,7 @@ def l_duyet(a, lot):
 
 
 LENH = {"trang-thai": l_trang_thai, "ve": l_ve, "tin3d": l_tin3d, "tin3d-tat": l_tin3d_tat, "xem3d": l_xem3d,
-        "luoi-doc": l_luoi_doc,
+        "luoi-doc": l_luoi_doc, "thong-tin": l_thong_tin,
         "luoi-sua": l_luoi_sua, "luoi-ve-lai-lot-yaml": l_luoi_ve_lai_lot_yaml, "mat-cat": l_mat_cat, "bang": l_bang,
         "chay": l_chay, "canh-bao": l_canh_bao, "o-tai": l_o_tai, "dong-bo": l_dong_bo,
         "hieuchinh-nhieu": l_hieuchinh_nhieu, "duyet": l_duyet}
@@ -481,7 +512,8 @@ def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="sannen_cad.cau_noi")
     ap.add_argument("cmd", choices=sorted(LENH))
     ap.add_argument("--lot", required=True)
-    ap.add_argument("--ra", required=True, help="file kết quả (s-expression AutoLISP)")
+    ap.add_argument("--ra", required=True, help="file kết quả (s-expression AutoLISP; JSON nếu có --json)")
+    ap.add_argument("--json", action="store_true", help="ghi kết quả dạng JSON UTF-8 (cho palette C#) thay vì s-expression")
     ap.add_argument("--lsp")
     ap.add_argument("--lop")
     ap.add_argument("--be-mat")
@@ -523,6 +555,17 @@ def _parser() -> argparse.ArgumentParser:
     return ap
 
 
+def _sach(o):
+    """Chuẩn bị cho JSON chặt: NaN/Inf → null, tuple → list, khoá → chuỗi (JavaScriptSerializer của .NET không đọc NaN)."""
+    if isinstance(o, dict):
+        return {str(k): _sach(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_sach(v) for v in o]
+    if isinstance(o, float) and (o != o or o in (math.inf, -math.inf)):
+        return None
+    return o
+
+
 def mo_rong_args_file(argv: list[str]) -> list[str]:
     """`--args-file F`: đọc đối số từ file, MỖI DÒNG MỘT đối số (dòng trống bỏ qua).
 
@@ -556,6 +599,9 @@ def main(argv: list[str] | None = None) -> int:
         tb = f"{type(e).__name__}: {e}"
     ra = Path(a.ra)
     ra.parent.mkdir(parents=True, exist_ok=True)
+    if a.json:
+        ra.write_bytes(json.dumps(_sach({"ok": ok, "thong_bao": tb, "du_lieu": du}), ensure_ascii=False).encode("utf-8"))
+        return 0
     noi_dung = sx({"ok": ok, "thong_bao": tb, "du_lieu": du})
     if ra.suffix.lower() == ".lsp":
         # AutoLISP `open ... "r"` đọc UTF-8 thành rác (đo trên AutoCAD 2022), còn `(load)` thì đọc UTF-8 đúng:

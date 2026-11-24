@@ -1,4 +1,4 @@
-﻿# cad/ — cầu nối AutoCAD 2022 (giai đoạn 8)
+# cad/ — cầu nối AutoCAD 2022 (giai đoạn 8)
 
 Phơi đúng 13 công cụ của SPEC mục 9:
 
@@ -38,4 +38,8 @@ này đi vào hồ sơ thanh toán. Khi cài, chạy lại đúng bộ test hợ
 
 ## Menu SAN NỀN trong AutoCAD
 
-Giao diện menu/hộp thoại, lệnh SN_*, cầu nối và checklist kiểm: xem [MENU.md](MENU.md). Backend LISP (ackend_lisp.py) sinh file entmake nạp thẳng vào bản vẽ đang mở — thay cho phần COM chưa thể kiểm thử.
+Bảng điều khiển trung tâm **`SN_QL`** (hiện/ẩn nhóm TIN–lưới–nhãn–ranh–mặt cắt–bảng, xem số liệu, nhảy sang các thao tác; số liệu từ cầu nối `thong-tin`, chỉ đọc): xem MENU.md. Giao diện menu/hộp thoại, lệnh SN_*, cầu nối và checklist kiểm: xem [MENU.md](MENU.md). Backend LISP (ackend_lisp.py) sinh file entmake nạp thẳng vào bản vẽ đang mở — thay cho phần COM chưa thể kiểm thử.
+
+## Palette .NET (bảng dọc dock được, nhiều tab)
+
+`cad/dotnet/SanNenPalette/` (C# 5, .NET Framework 4.8, build bằng `csc.exe`): `powershell -ExecutionPolicy Bypass -File cad\dotnet\xay_palette.ps1` → `cad\dotnet\bin\SanNenPalette.dll` (gitignore). Trong AutoCAD gõ `SN_PALETTE`. Tab: QL ĐH · Biên lô · Lưới · Mặt cắt · Khối lượng · Cảnh báo. Dữ liệu qua `python -m sannen_cad.cau_noi thong-tin --json` (JSON, chạy nền). Chi tiết, checklist GUI: [MENU.md](MENU.md).

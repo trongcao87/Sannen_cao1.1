@@ -13,6 +13,59 @@
 //  * Key co tien to: e_ o nhap - t_ chu/toggle - n_ chu nhan canh o - b_ nut - p_ popup - l_ danh sach.
 //    Moi key la duy nhat TRONG tung hop thoai (test_gd12_lisp.py kiem tra).
 
+// ---- Bang dieu khien trung tam (SN_QL) -----------------------------------------------------------------
+// Gom: thong tin lo + 3 cong + canh bao ket qua cu; danh sach NHOM doi tuong (so doi tuong, Hien/An);
+// khung so lieu chi tiet theo nhom; cac nut dieu phoi. list_box dung `fixed_width_font` + `tabs` de thang cot.
+// Cao khoang 28 dong luoi, rong khoang 126 ky tu (vua man hinh 1366).
+sn_ql : dialog {
+  label = "SAN NEN - Bang dieu khien";
+  : text { key = "t_ten"; value = ""; width = 124; }
+  : text { key = "t_lo"; value = ""; width = 124; }
+  : text { key = "t_buoc"; value = ""; width = 124; }
+  : text { key = "t_cong"; value = ""; width = 124; }
+  : text { key = "t_cu"; value = ""; width = 124; }
+  : text { key = "t_cu2"; value = ""; width = 124; }
+  : row {
+    : column {
+      : text { key = "t_cot"; value = ""; width = 60; }
+      : list_box { key = "l_nhom"; width = 60; height = 11; multiple_select = true; fixed_width_font = true; tabs = "28 46"; tab_truncate = true; }
+      : row {
+        : button { key = "b_hien"; label = "Hien"; width = 10; }
+        : button { key = "b_an"; label = "An"; width = 10; }
+        : button { key = "b_chi"; label = "Chi hien nhom nay"; width = 26; }
+      }
+      : row {
+        : button { key = "b_hien_het"; label = "Hien tat ca SAN NEN"; width = 22; }
+        : button { key = "b_an_het"; label = "An tat ca SAN NEN"; width = 20; }
+        : button { key = "b_zoom"; label = "Zoom toi nhom"; width = 16; }
+      }
+    }
+    : column {
+      : text { key = "t_cttieu"; value = ""; width = 62; }
+      : list_box { key = "l_ct"; width = 62; height = 14; fixed_width_font = true; tabs = "40"; tab_truncate = true; }
+    }
+  }
+  : row {
+    : button { key = "b_tin3d"; label = "Xem 3D..."; width = 22; }
+    : button { key = "b_xem3d"; label = "Trinh xem HTML"; width = 22; }
+    : button { key = "b_luoi"; label = "Hieu chinh luoi..."; width = 22; }
+    : button { key = "b_matcat"; label = "Mat cat..."; width = 22; }
+    : button { key = "b_capdo"; label = "Cao do dinh..."; width = 22; }
+  }
+  : row {
+    : button { key = "b_canhbao"; label = "Canh bao QC..."; width = 20; }
+    : button { key = "b_bang"; label = "Bang bieu..."; width = 18; }
+    : button { key = "b_tinh"; label = "Tinh lai"; width = 16; }
+    : button { key = "b_ve"; label = "Ve lai nhom dang chon"; width = 26; }
+    : button { key = "b_duyet"; label = "Duyet cong..."; width = 18; }
+    : button { key = "b_lammoi"; label = "Lam moi"; width = 14; }
+    : button { key = "b_dong"; label = "Dong"; is_cancel = true; width = 12; }
+  }
+  : text { key = "t_tt"; value = ""; width = 124; }
+  : text { key = "t_tt2"; value = ""; width = 124; }
+  : text { key = "t_tt3"; value = ""; width = 124; }
+}
+
 // ---- Xem 3D cua TIN ------------------------------------------------------------------------------------
 sn_tin3d : dialog {
   label = "SAN NEN - Xem 3D";

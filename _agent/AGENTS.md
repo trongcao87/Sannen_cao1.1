@@ -47,6 +47,12 @@ bỏ qua. Người trả lời gọn bằng mã (`V-01 a, V-02 b`); ghi mỗi l�
 `--preview` là mặc định cho mọi verb có side-effect. Chỉ bỏ `--preview` sau khi
 người duyệt.
 
+## Chốt chặn cổng (`core/sannen/cong.py`)
+
+Cổng được kiểm TRONG `cli.main`, nên dòng lệnh, MCP và menu AutoCAD đều bị chặn như nhau: verb ghi (`mat`, `lo` cần cổng 1;
+`luoi`, `hieuchinh`, `tinh` cần cổng 2; `xuat` cần cổng 3) không chạy khi bỏ `--preview` mà cổng chưa duyệt hoặc kết quả đã
+đổi từ lúc duyệt — thoát mã 2, chưa ghi file nào. `--preview`, `nhap`, `xem3d` không bị chặn. `cong.json` hỏng = chưa duyệt.
+
 ## Qua MCP (giai đoạn 7)
 
 Máy chủ `sannen-mcp` (`python -m sannen.mcp_server`) bọc đúng các verb trên thành công cụ `sannen_<verb>`, cộng

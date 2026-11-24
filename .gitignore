@@ -17,3 +17,6 @@ Tham khao/public/assets/aistudio/*.pdf
 Tham khao/node_modules/
 Tham khao/dist/
 Tham khao/.env
+
+# Palette .NET: DLL biên dịch ra bằng cad/dotnet/xay_palette.ps1, không commit nhị phân
+cad/dotnet/bin/

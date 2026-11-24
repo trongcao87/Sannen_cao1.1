@@ -1257,10 +1257,400 @@
 (defun c:SN_DUYET () (sn:chay-lenh "SN_DUYET" 'sn:l-duyet))
 
 ;;; ===========================================================================================
+;;; 19B. BẢNG ĐIỀU KHIỂN TRUNG TÂM  (SN_QL)
+;;; ===========================================================================================
+;;; MỘT hộp thoại gom: thông tin lô + ba cổng + cảnh báo "kết quả cũ" (đầu hộp); danh sách NHÓM ĐỐI TƯỢNG với số đối
+;;; tượng đếm trong bản vẽ (đúng lô, đúng đợt: XDATA SANNEN) và trạng thái Hiện/Ẩn đọc từ bản vẽ mỗi lần mở; khung số liệu
+;;; chi tiết theo nhóm (cầu nối `thong-tin` — lõi chỉ ĐỌC file, không tính); các nút nhảy sang thao tác điều chỉnh.
+;;; Ẩn/hiện CHỈ bằng ON/OFF layer (sn:lop-bat) — không đóng băng, không xóa, không đổi layer hiện hành, không đụng layer
+;;; ngoài "SN-*". Hộp KHÔNG tự tính (RULES 1) và mọi lệnh ghi vẫn xin xác nhận như khi gọi trực tiếp (RULES 4).
+;;;
+;;; Bảng nhóm: (khoá  tên-có-dấu  kiểu-layer  gốc-layer  có-XDATA?)
+;;;   kiểu "dot"    = layer của nhóm là gốc (đợt 1) hoặc gốc-Dnn (đợt n) — đúng backend.ten_layer
+;;;   kiểu "co-dinh"= layer luôn đúng tên gốc (SN-MATCAT, SN-BANG)
+;;;   kiểu "mau"    = mẫu wcmatch nhiều layer nguồn của nhà thầu (đếm theo layer, không có XDATA)
+(setq *sn-ql-nhom*
+  '(("moc"       "TIN mốc"                  "dot"     "SN-3DF-MOC"      T)
+    ("do"        "TIN đo"                   "dot"     "SN-3DF-DO"       T)
+    ("qc"        "Tam giác thiếu dữ liệu"   "dot"     "SN-QC"           T)
+    ("luoi"      "Lưới ô"                   "dot"     "SN-LUOI"         T)
+    ("nhan"      "Nhãn đỉnh lưới"           "dot"     "SN-LUOI-NHAN"    T)
+    ("o"         "Nhãn ô (khối lượng)"      "dot"     "SN-LUOI-O"       T)
+    ("ranh"      "Ranh đào–đắp"             "dot"     "SN-RANH-DAODAP"  T)
+    ("matcat"    "Mặt cắt"                  "co-dinh" "SN-MATCAT"       T)
+    ("bang"      "Bảng in"                  "co-dinh" "SN-BANG"         T)
+    ("khoiluong" "Khối lượng (số liệu)"     nil       nil               nil)
+    ("nguon"     "Dữ liệu nguồn (nhà thầu)" "mau"
+     "SN-DIEM-MOC*,SN-DIEM-DO*,SN-DUTGAY*,SN-DONGMUC*,SN-BIENLO*,SN-LOAITRU*" nil)))
+
+;; nhóm của ql → nhóm của `ve` (cad/sannen_cad/ve.py: luoi, nhan, o, ranh, 3d, bang). Mặt cắt chỉ vẽ lại bằng SN_MATCAT.
+(setq *sn-ql-ve* '(("moc" . "3d") ("do" . "3d") ("qc" . "3d") ("luoi" . "luoi") ("nhan" . "nhan") ("o" . "o")
+                   ("ranh" . "ranh") ("bang" . "bang")))
+;; nút → lệnh có sẵn (đóng hộp, chạy lệnh, mở lại hộp để cập nhật)
+(setq *sn-ql-lenh* '((1 . "SN_TIN3D") (2 . "SN_XEM3D") (3 . "SN_LUOI") (4 . "SN_MATCAT") (5 . "SN_CAPDO")
+                     (6 . "SN_CANHBAO") (7 . "SN_BANG") (8 . "SN_TINH") (10 . "SN_DUYET")))
+
+(setq *sn-ql-chon* "0"     ; dòng đang chọn trong danh sách nhóm (chuỗi get_tile) — nhớ giữa các lần mở lại
+      *sn-ql-tt* nil       ; du_lieu của cầu nối thong-tin (nil = chưa đọc được)
+      *sn-ql-loi* nil      ; lý do không đọc được
+      *sn-ql-dem* nil      ; alist (khoá . số đối tượng) đếm trong bản vẽ; nil = nhóm chưa có layer
+      *sn-ql-lo* nil *sn-ql-dot* nil
+      *sn-ql-can-regen* nil *sn-ql-bo-qua* nil)
+
+(defun sn:ql-join (ds sep / r)
+  (setq r "")
+  (foreach s ds (setq r (if (= r "") s (strcat r sep s))))
+  r)
+
+(defun sn:ql-ten-dot (goc dot)                            ; như backend.ten_layer: đợt 1 → gốc; đợt n → gốc-Dnn
+  (if (and dot (> dot 1)) (strcat goc "-D" (if (< dot 10) "0" "") (itoa dot)) goc))
+
+(defun sn:ql-mau-lop (g / kieu goc)                       ; mẫu wcmatch (HOA) các layer của nhóm; nil nếu nhóm không có layer
+  (setq kieu (nth 2 g) goc (nth 3 g))
+  (cond ((null goc) nil)
+        ((= kieu "dot") (sn:ql-ten-dot goc (sn:neu *sn-ql-dot* 1)))
+        (T goc)))
+
+(defun sn:ql-lop-cua (g / pat d r n)                      ; tên layer THỰC CÓ trong bản vẽ của nhóm
+  (if (setq pat (sn:ql-mau-lop g))
+    (progn
+      (setq d (tblnext "LAYER" T))
+      (while d
+        (setq n (cdr (assoc 2 d)))
+        (if (and (wcmatch (strcase n) (strcase pat)) (not (vl-string-search "|" n))) (setq r (cons n r)))
+        (setq d (tblnext "LAYER")))))
+  (reverse r))
+
+(defun sn:ql-lop-sn ( / d r n)                            ; MỌI layer SN-* (mọi đợt, mọi nhóm) — cho nút "tất cả SAN NỀN"
+  (setq d (tblnext "LAYER" T))
+  (while d
+    (setq n (cdr (assoc 2 d)))
+    (if (and (wcmatch (strcase n) "SN-*") (not (vl-string-search "|" n))) (setq r (cons n r)))
+    (setq d (tblnext "LAYER")))
+  (reverse r))
+
+(defun sn:ql-lop-tt (ten / r)                             ; "hien" | "an" (OFF) | "dong-bang"
+  (setq r (tblsearch "LAYER" ten))
+  (cond ((null r) nil)
+        ((/= 0 (logand 1 (cdr (assoc 70 r)))) "dong-bang")
+        ((< (cdr (assoc 62 r)) 0) "an")
+        (T "hien")))
+
+(defun sn:ql-trang-thai (g / ds ts)                       ; "hien" | "an" | "mot-phan" | "dong-bang" | "khong" (chưa có layer / không áp dụng)
+  (setq ds (sn:ql-lop-cua g))
+  (cond ((null ds) "khong")
+        (T (setq ts (mapcar 'sn:ql-lop-tt ds))
+           (cond ((member "dong-bang" ts) "dong-bang")
+                 ((null (vl-remove-if '(lambda (x) (= x "hien")) ts)) "hien")
+                 ((null (vl-remove-if '(lambda (x) (= x "an")) ts)) "an")
+                 (T "mot-phan")))))
+
+(defun sn:ql-chu-tt (g / st)
+  (setq st (sn:ql-trang-thai g))
+  (cond ((null (nth 3 g)) "—")
+        ((= st "hien") "Hiện") ((= st "an") "Ẩn") ((= st "mot-phan") "Một phần")
+        ((= st "dong-bang") "Đóng băng") (T "Chưa có lớp")))
+
+(defun sn:ql-ss-nhom (g lo dot / ds ss i e xd r)          ; tập chọn các đối tượng CỦA ĐÚNG lô+đợt trong nhóm (nil nếu không có)
+  ;; nhóm có XDATA: lọc theo XDATA SANNEN (mã lô, đợt); nhóm nguồn: mọi đối tượng trên layer.
+  (if (setq ds (sn:ql-lop-cua g))
+    (progn
+      (setq ss (ssget "X" (append (list (cons 8 (sn:ql-join ds ","))) (if (nth 4 g) '((-3 ("SANNEN"))))))
+            r (ssadd))
+      (if ss
+        (repeat (setq i (sslength ss))
+          (setq e (ssname ss (setq i (1- i))))
+          (if (nth 4 g)
+            (progn (setq xd (sn:xd-chuoi e))
+                   (if (and xd (>= (length xd) 4) (= (car xd) lo) (= (cadr xd) (itoa dot))) (ssadd e r)))
+            (ssadd e r))))))
+  (if (and r (> (sslength r) 0)) r))
+
+(defun sn:ql-dem-nhom (g lo dot / ss)                     ; số đối tượng; nil nếu nhóm chưa có layer trong bản vẽ
+  (cond ((null (sn:ql-lop-cua g)) nil)
+        ((setq ss (sn:ql-ss-nhom g lo dot)) (sslength ss))
+        (T 0)))
+
+(defun sn:ql-nap ( / kq)                                  ; đọc thông tin từ lõi + đếm đối tượng trong bản vẽ (mỗi lần mở/làm mới)
+  (setq kq (sn:chay "thong-tin" "" nil))
+  (if (sn:get "ok" kq)
+    (setq *sn-ql-tt* (sn:get "du_lieu" kq) *sn-ql-loi* nil)
+    (setq *sn-ql-tt* nil *sn-ql-loi* (sn:neu (sn:get "thong_bao" kq) "lỗi không rõ")))
+  (setq *sn-ql-lo* (sn:neu (sn:ma-lo) "") *sn-ql-dot* (sn:dot) *sn-ql-dem* nil)
+  (foreach g *sn-ql-nhom*
+    (setq *sn-ql-dem* (cons (cons (car g) (sn:ql-dem-nhom g *sn-ql-lo* *sn-ql-dot*)) *sn-ql-dem*)))
+  *sn-ql-tt*)
+
+(defun sn:ql-parse-chon (s / r)                           ; "0 3 5" → (0 3 5)
+  (foreach p (sn:chia (sn:neu s "") " ") (if (/= p "") (setq r (cons (atoi p) r))))
+  (reverse r))
+
+(defun sn:ql-nhom-chon (s / r)                            ; chuỗi chọn → danh sách các nhóm
+  (foreach i (sn:ql-parse-chon s) (if (nth i *sn-ql-nhom*) (setq r (cons (nth i *sn-ql-nhom*) r))))
+  (reverse r))
+
+(defun sn:ql-bat-ds (ds bat / n cl)                       ; ON/OFF các layer trong ds (KHÔNG tắt layer hiện hành); trả số layer đổi
+  (setq n 0 cl (strcase (getvar "CLAYER")))
+  (foreach l ds
+    (cond ((and (not bat) (= (strcase l) cl)) (setq *sn-ql-bo-qua* (cons l *sn-ql-bo-qua*)))
+          ((sn:lop-bat l bat) (setq n (1+ n)))))
+  n)
+
+(defun sn:ql-bat-nhom (g bat)
+  (sn:ql-bat-ds (sn:ql-lop-cua g) bat))
+
+(defun sn:ql-chi-hien (gs / giu r n)                      ; BẬT layer của các nhóm gs, TẮT mọi layer SN-* còn lại
+  (setq giu nil n 0)
+  (foreach g gs (setq giu (append giu (mapcar 'strcase (sn:ql-lop-cua g)))))
+  (foreach l (sn:ql-lop-sn)
+    (setq n (+ n (sn:ql-bat-ds (list l) (if (member (strcase l) giu) T nil)))))
+  n)
+
+;;; ---- văn bản hiển thị -------------------------------------------------------------------------
+(setq *sn-ql-buoc* '(("nhap" . "nhập") ("mat" . "mặt TIN") ("lo" . "biên lô") ("luoi" . "lưới") ("tinh" . "tính") ("xuat" . "xuất")))
+
+(defun sn:ql-buoc-chu (tt / b ke)
+  (setq b (sn:get "buoc" tt) ke (sn:get "buoc_ke_tiep" tt))
+  (strcat "Đã chạy:  "
+          (apply 'strcat (mapcar '(lambda (p) (strcat (if (sn:get (car p) b) "[x] " "[ ] ") (cdr p) "    ")) *sn-ql-buoc*))
+          (if ke (strcat "→ kế tiếp: " (sn:neu (sn:get ke *sn-ql-buoc*) ke)) "→ đã đủ các bước")))
+
+(defun sn:ql-cong-chu (tt / cg r ds)
+  (setq cg (sn:get "cong" tt) r "")
+  (foreach n '(1 2 3)
+    (setq ds (sn:dy-cong-ds cg n))
+    (setq r (strcat r (if (> n 1) "    |    " "") "Cổng " (itoa n) ": "
+                    (cond ((null ds) "chưa rõ")
+                          ((sn:get "da_duyet" ds) "ĐÃ duyệt")
+                          (T (strcat "chưa duyệt"
+                                     (if (> (fix (sn:neu (sn:get "viec_chan" ds) 0)) 0)
+                                       (strcat " (còn " (itoa (fix (sn:get "viec_chan" ds))) " việc CHẶN)") "")))))))
+  r)
+
+(defun sn:ql-cu-chu (tt / ds)                             ; cảnh báo "kết quả cũ" (đã nhóm thành một đoạn)
+  (setq ds (sn:get "canh_bao_cu" tt))
+  (if ds
+    (strcat "CẢNH BÁO KẾT QUẢ CŨ: " (sn:ql-join ds "  •  "))
+    "Kết quả khớp lưới và bề mặt hiện tại (không phát hiện kết quả cũ)."))
+
+(defun sn:ql-dong-nhom (g / n)                            ; một hàng của danh sách nhóm: tên ⇥ số đối tượng ⇥ trạng thái
+  (setq n (cdr (assoc (car g) *sn-ql-dem*)))
+  (strcat (cadr g) "\t"
+          (cond ((null (nth 3 g)) "—") ((null n) "(chưa có lớp)") (T (strcat (itoa n) " đối tượng")))
+          "\t" (sn:ql-chu-tt g)))
+
+(defun sn:ql-ct-dong (g / k n r ds sl)                    ; các dòng "nhãn ⇥ giá trị" của khung số liệu theo nhóm
+  (setq k (car g) n (cdr (assoc k *sn-ql-dem*)) r nil)
+  (if (nth 3 g)
+    (progn
+      (setq ds (sn:ql-lop-cua g))
+      (setq r (list (strcat "Lớp (layer)\t" (if ds (sn:ql-join ds ", ") (strcat "chưa có trong bản vẽ: " (sn:ql-mau-lop g))))
+                    (strcat "Đối tượng trong bản vẽ\t" (if n (itoa n) "—")
+                            (if (nth 4 g) (strcat " (lô " *sn-ql-lo* ", đợt " (itoa (sn:neu *sn-ql-dot* 1)) ")") " (mọi đối tượng trên lớp)"))
+                    (strcat "Hiển thị\t" (sn:ql-chu-tt g))))))
+  (if *sn-ql-tt*
+    (foreach p (sn:get k (sn:get "nhom" *sn-ql-tt*))
+      (setq r (append r (list (strcat (sn:vs (car p)) "\t" (sn:vs (cadr p)))))))
+    (setq r (append r (list (strcat "Số liệu\tChưa có — " (sn:neu *sn-ql-loi* "chưa đọc từ lõi"))))))
+  r)
+
+;;; ---- hộp thoại ------------------------------------------------------------------------------------
+(defun sn:ql-dien-dau ( / tt)
+  (setq tt *sn-ql-tt*)
+  (cond
+    (tt
+     (sn:vn "t_lo" (strcat "Lô " (sn:neu (sn:get "ma_lo" (sn:get "lo" tt)) "?") "   ·   đợt " (sn:vs (sn:get "dot" (sn:get "lo" tt)))
+                           "   ·   thư mục " (sn:neu (sn:get "thu_muc" (sn:get "lo" tt)) "?")))
+     (sn:vn "t_buoc" (sn:ql-buoc-chu tt))
+     (sn:vn "t_cong" (sn:ql-cong-chu tt))
+     (sn:vn-dong '("t_cu" "t_cu2") (sn:ql-cu-chu tt) 118))
+    (T
+     (sn:vn "t_lo" (strcat "Lô " (sn:neu (sn:ma-lo) "?") " — chưa đọc được số liệu từ lõi"))
+     (sn:vn "t_buoc" "Đã chạy:  chưa rõ")
+     (sn:vn "t_cong" "Cổng 1: chưa rõ    |    Cổng 2: chưa rõ    |    Cổng 3: chưa rõ")
+     (sn:vn-dong '("t_cu" "t_cu2")
+                 (strcat "Không đọc được thông tin lô: " (sn:neu *sn-ql-loi* "?") " — kiểm tra cấu hình " (sn:cfg-file)
+                         " (python=, cad=, lot=) rồi bấm Làm mới. Phần Hiện/Ẩn nhóm vẫn dùng được.") 118))))
+
+(defun sn:ql-dien-ds ()                                   ; đổ danh sách nhóm (trạng thái đọc LẠI từ bản vẽ) và đặt lại dòng chọn
+  (start_list "l_nhom")
+  (foreach g *sn-ql-nhom* (add_list (sn:ql-dong-nhom g)))
+  (end_list)
+  (set_tile "l_nhom" (sn:neu *sn-ql-chon* "0")))
+
+(defun sn:ql-dien-ct ( / gs g)                            ; khung số liệu theo nhóm đang chọn (dòng đầu tiên nếu chọn nhiều)
+  (setq gs (sn:ql-nhom-chon (get_tile "l_nhom")))
+  (start_list "l_ct")
+  (cond
+    ((null gs) (add_list "Chọn một nhóm ở bên trái để xem số liệu."))
+    (T (setq g (car gs))
+       (foreach d (sn:ql-ct-dong g) (add_list d))))
+  (end_list)
+  (sn:vn "t_cttieu" (if gs (strcat "Số liệu: " (cadr (car gs)) (if (> (length gs) 1) (strcat "   (+" (itoa (1- (length gs))) " nhóm khác đang chọn)") ""))
+                      "Số liệu chi tiết")))
+
+(defun sn:ql-luu ()
+  (setq *sn-ql-chon* (get_tile "l_nhom")))
+
+(defun sn:ql-cb-chon ()
+  (sn:ql-luu)
+  (sn:ql-dien-ct))
+
+(defun sn:ql-lam-lai-hien-thi ()                          ; cập nhật danh sách + chi tiết sau khi đổi Hiện/Ẩn
+  (sn:ql-luu)
+  (sn:ql-dien-ds)
+  (sn:ql-dien-ct))
+
+(defun sn:ql-tom-tat-bat (n bat)
+  (strcat (if bat "Đã BẬT " "Đã TẮT ") (itoa n) " layer (chỉ ON/OFF — không đóng băng, không xóa)."
+          (if *sn-ql-bo-qua* (strcat " Giữ nguyên layer hiện hành: " (sn:ql-join *sn-ql-bo-qua* ", ") " (không tắt được layer đang vẽ).") "")))
+
+(defun sn:ql-cb-bat (bat / gs n)                          ; nút Hiện / Ẩn cho các nhóm đang chọn
+  (sn:ql-luu)
+  (setq gs (sn:ql-nhom-chon *sn-ql-chon*) n 0 *sn-ql-bo-qua* nil)
+  (cond ((null gs) (sn:tt "Chọn ít nhất một nhóm trong danh sách."))
+        ((null (vl-remove-if-not '(lambda (g) (nth 3 g)) gs)) (sn:tt "Nhóm này không có đối tượng vẽ để hiện/ẩn."))
+        (T (foreach g gs (setq n (+ n (sn:ql-bat-nhom g bat))))
+           (setq *sn-ql-can-regen* T)
+           (sn:ql-lam-lai-hien-thi)
+           (sn:tt (sn:ql-tom-tat-bat n bat)))))
+
+(defun sn:ql-cb-chi ( / gs n)                             ; "Chỉ hiện nhóm này": các nhóm chọn BẬT, mọi layer SN-* khác TẮT
+  (sn:ql-luu)
+  (setq gs (vl-remove-if-not '(lambda (g) (nth 3 g)) (sn:ql-nhom-chon *sn-ql-chon*)) *sn-ql-bo-qua* nil)
+  (cond ((null gs) (sn:tt "Chọn ít nhất một nhóm có đối tượng vẽ."))
+        (T (setq n (sn:ql-chi-hien gs))
+           (setq *sn-ql-can-regen* T)
+           (sn:ql-lam-lai-hien-thi)
+           (sn:tt (strcat "Chỉ hiện: " (sn:ql-join (mapcar 'cadr gs) ", ") ". " (sn:ql-tom-tat-bat n nil)
+                          " Layer ngoài SAN NỀN không bị đụng tới.")))))
+
+(defun sn:ql-cb-tat-ca (bat / n)                          ; "Hiện / Ẩn tất cả SAN NỀN": mọi layer SN-*
+  (sn:ql-luu)
+  (setq *sn-ql-bo-qua* nil n (sn:ql-bat-ds (sn:ql-lop-sn) bat))
+  (setq *sn-ql-can-regen* T)
+  (sn:ql-lam-lai-hien-thi)
+  (sn:tt (strcat (if bat "Hiện tất cả layer SN-*. " "Ẩn tất cả layer SN-*. ") (sn:ql-tom-tat-bat n bat))))
+
+(defun sn:ql-cb-lam-moi ()
+  (sn:ql-luu)
+  (sn:tt "Đang đọc lại thông tin từ lõi và bản vẽ…")
+  (sn:ql-nap)
+  (sn:ql-dien-dau)
+  (sn:ql-dien-ds)
+  (sn:ql-dien-ct)
+  (sn:tt (if *sn-ql-tt* "Đã làm mới số liệu và trạng thái hiển thị." (strcat "Chưa đọc được số liệu: " (sn:neu *sn-ql-loi* "?")))))
+
+(defun sn:ql-cb-zoom ( / gs)                              ; "Zoom tới nhóm": đóng hộp rồi mới zoom (lệnh không chạy được trong hộp thoại)
+  (sn:ql-luu)
+  (setq gs (sn:ql-nhom-chon *sn-ql-chon*))
+  (cond ((null gs) (sn:tt "Chọn ít nhất một nhóm."))
+        ((null (vl-remove-if-not
+                 '(lambda (g) (and (nth 3 g) (> (sn:neu (cdr (assoc (car g) *sn-ql-dem*)) 0) 0)
+                                   (member (sn:ql-trang-thai g) '("hien" "mot-phan"))))
+                 gs))
+         (sn:tt "Nhóm chọn chưa có đối tượng nào đang HIỆN — bấm Hiện hoặc vẽ nhóm đó trước."))
+        (T (done_dialog 11))))
+
+(defun sn:ql-cb-ve ( / gs)                                ; "Vẽ lại các nhóm đang chọn": kiểm tra rồi đóng hộp (vẽ cần xác nhận ở dòng lệnh)
+  (sn:ql-luu)
+  (setq gs (sn:ql-nhom-chon *sn-ql-chon*))
+  (cond ((null gs) (sn:tt "Chọn ít nhất một nhóm."))
+        ((null (sn:ql-ve-nhom gs))
+         (sn:tt "Các nhóm chọn không vẽ lại từ đây: mặt cắt dùng SN_MATCAT; khối lượng và dữ liệu nguồn không có đối tượng vẽ."))
+        (T (done_dialog 9))))
+
+(defun sn:ql-ve-nhom (gs / r v)                           ; các nhóm của `ve` tương ứng (không trùng, giữ thứ tự)
+  (foreach g gs
+    (if (and (setq v (cdr (assoc (car g) *sn-ql-ve*))) (not (member v r))) (setq r (append r (list v)))))
+  r)
+
+(defun sn:ql-khoi ( / n)
+  (sn:vn-ds '(("t_ten" . "SAN NỀN — Bảng điều khiển trung tâm: TIN, lưới ô vuông, khối lượng, hiển thị")
+              ("t_cot" . "Nhóm đối tượng (giữ Ctrl / Shift để chọn nhiều nhóm)")
+              ("b_hien" . "Hiện") ("b_an" . "Ẩn") ("b_chi" . "Chỉ hiện nhóm này")
+              ("b_hien_het" . "Hiện tất cả SAN NỀN") ("b_an_het" . "Ẩn tất cả SAN NỀN") ("b_zoom" . "Zoom tới nhóm")
+              ("b_tin3d" . "Xem 3D…") ("b_xem3d" . "Trình xem HTML") ("b_luoi" . "Hiệu chỉnh lưới…")
+              ("b_matcat" . "Mặt cắt…") ("b_capdo" . "Cao độ đỉnh…") ("b_canhbao" . "Cảnh báo QC…")
+              ("b_bang" . "Bảng biểu…") ("b_tinh" . "Tính lại") ("b_ve" . "Vẽ lại nhóm đang chọn")
+              ("b_duyet" . "Duyệt cổng…") ("b_lammoi" . "Làm mới") ("b_dong" . "Đóng")))
+  (sn:ql-dien-dau)
+  (sn:ql-dien-ds)
+  (sn:ql-dien-ct)
+  (setq n (length (sn:doc-lop-an)))
+  (sn:tt (if (> n 0)
+           (strcat "Đang ẩn " (itoa n) " layer ngoài SAN NỀN để xem riêng mặt 3D — khôi phục bằng SN_TIN3D → Khôi phục lớp. "
+                   "Hộp này chỉ bật/tắt layer SN-*.")
+           "Hiện/Ẩn chỉ bật-tắt layer SN-* (không đóng băng, không xóa). Hộp chỉ điều phối; mọi phép tính do lõi, lệnh ghi vẫn xin xác nhận."))
+  (action_tile "l_nhom" "(sn:an 'sn:ql-cb-chon)")
+  (action_tile "b_hien" "(sn:an '(lambda () (sn:ql-cb-bat T)))")
+  (action_tile "b_an" "(sn:an '(lambda () (sn:ql-cb-bat nil)))")
+  (action_tile "b_chi" "(sn:an 'sn:ql-cb-chi)")
+  (action_tile "b_hien_het" "(sn:an '(lambda () (sn:ql-cb-tat-ca T)))")
+  (action_tile "b_an_het" "(sn:an '(lambda () (sn:ql-cb-tat-ca nil)))")
+  (action_tile "b_zoom" "(sn:an 'sn:ql-cb-zoom)")
+  (action_tile "b_tin3d" "(sn:ql-luu) (done_dialog 1)")
+  (action_tile "b_xem3d" "(sn:ql-luu) (done_dialog 2)")
+  (action_tile "b_luoi" "(sn:ql-luu) (done_dialog 3)")
+  (action_tile "b_matcat" "(sn:ql-luu) (done_dialog 4)")
+  (action_tile "b_capdo" "(sn:ql-luu) (done_dialog 5)")
+  (action_tile "b_canhbao" "(sn:ql-luu) (done_dialog 6)")
+  (action_tile "b_bang" "(sn:ql-luu) (done_dialog 7)")
+  (action_tile "b_tinh" "(sn:ql-luu) (done_dialog 8)")
+  (action_tile "b_ve" "(sn:an 'sn:ql-cb-ve)")
+  (action_tile "b_duyet" "(sn:ql-luu) (done_dialog 10)")
+  (action_tile "b_lammoi" "(sn:an 'sn:ql-cb-lam-moi)")
+  (action_tile "b_dong" "(sn:ql-luu) (done_dialog 0)"))
+
+;;; ---- việc làm SAU khi hộp đóng (lệnh `command` không chạy được trong hộp thoại) ----------------------
+(defun sn:ql-zoom ( / tong ss n i)
+  (setq tong (ssadd) n 0)
+  (foreach g (sn:ql-nhom-chon *sn-ql-chon*)
+    (if (and (nth 3 g) (member (sn:ql-trang-thai g) '("hien" "mot-phan")) (setq ss (sn:ql-ss-nhom g *sn-ql-lo* *sn-ql-dot*)))
+      (repeat (setq i (sslength ss))
+        (ssadd (ssname ss (setq i (1- i))) tong)
+        (setq n (1+ n)))))
+  (if (> (sslength tong) 0)
+    (progn (sn:thu (list 'lambda nil (list 'command "_.ZOOM" "_O" tong "")))
+           (sn:bao (strcat "Đã zoom tới " (itoa (sslength tong)) " đối tượng của nhóm đang chọn.")))
+    (sn:bao "Không có đối tượng đang hiện để zoom tới.")))
+
+(defun sn:ql-ve-lai ( / ds)
+  (setq ds (sn:ql-ve-nhom (sn:ql-nhom-chon *sn-ql-chon*)))
+  (cond
+    ((null ds) (sn:bao "Nhóm đang chọn không vẽ lại từ đây (mặt cắt: SN_MATCAT)."))
+    ((sn:xac-nhan (strcat "Vẽ lại nhóm [" (sn:ql-join ds ", ") "] của lô " *sn-ql-lo*
+                          " (xóa kết quả cũ cùng nhóm của ĐÚNG lô này rồi vẽ mới từ số liệu hiện có)? ") nil)
+     (sn:chay-ve "ve" (strcat "--lop " (sn:ql-join ds ",")))
+     (if (member "3d" ds) (sn:bao "Mặt 3D vẽ xong mặc định TẮT (layer-convention): bật lại ở SN_QL (Hiện) hoặc SN_TIN3D.")))
+    (T (sn:bao "Đã hủy — không vẽ lại."))))
+
+(defun sn:ql-chay-nut (ma / ten)                          ; nút → lệnh có sẵn; lệnh tự bọc lỗi và tự xin xác nhận nếu ghi
+  (cond
+    ((setq ten (cdr (assoc ma *sn-ql-lenh*)))
+     (vl-catch-all-apply (read (strcat "c:" ten)) nil))
+    ((= ma 9) (sn:ql-ve-lai))
+    ((= ma 11) (sn:ql-zoom))))
+
+(defun sn:l-ql ( / ma)
+  (if (sn:can-lot)
+    (progn
+      (setq ma -1)
+      (while (and ma (/= ma 0))
+        (sn:ql-nap)
+        (setq *sn-ql-can-regen* nil)
+        (setq ma (sn:mo-dlg "sn_ql" 'sn:ql-khoi))
+        (if *sn-ql-can-regen* (sn:thu '(lambda () (command "_.REGEN"))))
+        (if (and ma (> ma 0)) (sn:ql-chay-nut ma))))))
+(defun c:SN_QL () (sn:chay-lenh "SN_QL" 'sn:l-ql))
+
+;;; ===========================================================================================
 ;;; 20. MENU THẢ XUỐNG "SAN NỀN" (COM) + MENU DÒNG LỆNH DỰ PHÒNG
 ;;; ===========================================================================================
 (setq *sn-menu*
-  '(("Chọn lô…" "SN_LOT") ("Trạng thái lô" "SN_TRANGTHAI") "-"
+  '(("BẢNG ĐIỀU KHIỂN TRUNG TÂM… (SN_QL)" "SN_QL")
+    ("BẢNG DỌC DOCK NHIỀU TAB (SN_PALETTE)" "SN_PALETTE") "-"
+    ("Chọn lô…" "SN_LOT") ("Trạng thái lô" "SN_TRANGTHAI") "-"
     ("Dữ liệu" "SUB"
       ("Nạp dữ liệu (nhập)…" "SN_NHAP") ("Dựng bề mặt TIN (mặt)…" "SN_MAT") ("Chuẩn hóa biên lô…" "SN_LO") "-"
       ("Cảnh báo / QC…" "SN_CANHBAO"))
@@ -1291,7 +1681,7 @@
       ((equal (cadr it) "SUB")
        (setq sub (vla-addsubmenu pm (vla-get-count pm) (car it)))
        (sn:dung-menu sub (cddr it)))
-      (T (vla-addmenuitem pm (vla-get-count pm) (car it) (strcat "^C^C" (cadr it) " "))))))
+      (T (vla-addmenuitem pm (vla-get-count pm) (car it) (strcat (chr 3) (chr 3) (cadr it) " "))))))
 
 (defun sn:tao-menu ( / acad mg pms pm i n it mb)
   ;; Tạo (hoặc dựng lại) menu thả xuống "SAN NỀN" trên thanh menu. Không có AutoCAD giao diện (accoreconsole) → bỏ qua.
@@ -1324,9 +1714,10 @@
     r))
 
 (defun sn:l-menu ( / k)                                  ; menu dòng lệnh dự phòng — vào được mọi chức năng
-  (initget 1 "Lo Trangthai Nhap Mat Chuanhoa Canhbao Tin3d Luoi Capdo Matcat Tinh Ve Bang Excel Dongbo Congo Duyet Xoa Thoat Xem3d")
-  (setq k (getkword (strcat "\nSAN NỀN [Lo/Trangthai/Nhap/Mat/Chuanhoa/Canhbao/Tin3d/Xem3d/Luoi/Capdo/Matcat/Tinh/Ve/Bang/Excel/Dongbo/Congo/Duyet/Xoa/Thoat]: ")))
+  (initget 1 "Quanly Palette Lo Trangthai Nhap Mat Chuanhoa Canhbao Tin3d Luoi Capdo Matcat Tinh Ve Bang Excel Dongbo Congo Duyet Xoa Thoat Xem3d")
+  (setq k (getkword (strcat "\nSAN NỀN [Quanly/Palette/Lo/Trangthai/Nhap/Mat/Chuanhoa/Canhbao/Tin3d/Xem3d/Luoi/Capdo/Matcat/Tinh/Ve/Bang/Excel/Dongbo/Congo/Duyet/Xoa/Thoat]: ")))
   (cond
+    ((= k "Quanly") (c:SN_QL)) ((= k "Palette") (c:SN_PALETTE))
     ((= k "Lo") (c:SN_LOT)) ((= k "Trangthai") (c:SN_TRANGTHAI)) ((= k "Nhap") (c:SN_NHAP))
     ((= k "Mat") (c:SN_MAT)) ((= k "Chuanhoa") (c:SN_LO)) ((= k "Canhbao") (c:SN_CANHBAO))
     ((= k "Tin3d") (c:SN_TIN3D)) ((= k "Xem3d") (c:SN_XEM3D)) ((= k "Luoi") (c:SN_LUOI)) ((= k "Capdo") (c:SN_CAPDO))
@@ -1335,6 +1726,76 @@
     ((= k "Congo") (c:SN_CONGO)) ((= k "Duyet") (c:SN_DUYET)) ((= k "Xoa") (c:SN_XOA))))
 (defun c:SN_MENU () (sn:chay-lenh "SN_MENU" 'sn:l-menu))
 (defun c:SN () (c:SN_MENU))
+
+;;; ===========================================================================================
+;;; 19C. BẢNG DỌC DOCK ĐƯỢC NHIỀU TAB  (SN_PALETTE — add-in .NET cad\dotnet\SanNenPalette)
+;;; ===========================================================================================
+;;; Palette là add-in C# (DCL không dock được). LISP chỉ: (1) nạp DLL bằng NETLOAD rồi gọi lệnh .NET SN_PALETTE_MO
+;;; (tên khác c:SN_PALETTE để không trùng nhau), (2) nhận giá trị từ palette cho hai lệnh GHI có xác nhận (RULES 4):
+;;; SN_LUOIAPDUNG (tab Lưới) và SN_XOAMATCAT (tab Mặt cắt). Palette KHÔNG tự ghi gì vào lô.
+(setq *sn-pal-nap* nil     ; đã NETLOAD DLL trong phiên này?
+      *sn-pal-luoi* nil    ; (cột hàng bù) do palette đặt trước khi gọi SN_LUOIAPDUNG
+      *sn-pal-ten* nil)    ; tên mặt cắt do palette đặt trước khi gọi SN_XOAMATCAT
+
+(defun sn:pal-dll ( / cad f)
+  (if (setq cad (sn:cfg "cad"))
+    (if (findfile (setq f (strcat cad "\\dotnet\\bin\\SanNenPalette.dll"))) f)))
+
+(defun sn:l-palette ( / cad dll)
+  (cond
+    ((null (setq cad (sn:cfg "cad")))
+     (sn:bao (strcat "Chưa cấu hình cad= trong " (sn:cfg-file) " — chạy cad\\cai_dat_cad.ps1.")))
+    ((null (setq dll (sn:pal-dll)))
+     (sn:bao (strcat "Chưa có SanNenPalette.dll. Xây một lần (ngoài AutoCAD, trong PowerShell): "
+                     "powershell -ExecutionPolicy Bypass -File \"" cad "\\dotnet\\xay_palette.ps1\"  rồi gõ lại SN_PALETTE.")))
+    (T
+     (if (not *sn-pal-nap*)
+       (progn
+         (sn:bao "Đang nạp palette (NETLOAD). Nếu AutoCAD hỏi tin cậy DLL: chọn Always Load (hoặc thêm thư mục cad\\dotnet\\bin vào TRUSTEDPATHS).")
+         (command "_.NETLOAD" dll)
+         (setq *sn-pal-nap* T)))
+     (command "_.SN_PALETTE_MO"))))
+(defun c:SN_PALETTE () (sn:chay-lenh "SN_PALETTE" 'sn:l-palette))
+
+(defun sn:l-luoi-ap-dung ( / v cot hang ns a)
+  (if (sn:can-lot)
+    (cond
+      ((null *sn-pal-luoi*)
+       (sn:bao "Chưa có giá trị từ bảng dọc: mở SN_PALETTE → tab Lưới → nhập Cột / Hàng / Bù dữ liệu → Áp dụng."))
+      (T
+       (setq v *sn-pal-luoi* *sn-pal-luoi* nil
+             cot (sn:neu (car v) "") hang (sn:neu (cadr v) "") ns (sn:so (caddr v)))
+       (cond
+         ((or (null ns) (< ns 0)) (sn:bao "Bù dữ liệu phải là số ≥ 0 (m)."))
+         ((sn:xac-nhan (strcat "Áp dụng lưới từ bảng dọc: cột «" cot "», hàng «" hang "», bù dữ liệu " (sn:g ns)
+                               " m? (ghi luoi_tuy_chinh.yaml + decisions.md, tính lại và vẽ lại lưới) ") nil)
+          (setq a (strcat "--lenh dat --ngoai-suy " (sn:g ns)
+                          (if (/= cot "") (strcat " --cot=" (sn:q cot)) "")
+                          (if (/= hang "") (strcat " --hang=" (sn:q hang)) "")
+                          " --ly-do=" (sn:q "Bảng dọc SN_PALETTE (tab Lưới)")))
+          (sn:chay-ve "luoi-sua" a))
+         (T (sn:bao "Đã hủy — lưới giữ nguyên.")))))))
+(defun c:SN_LUOIAPDUNG () (sn:chay-lenh "SN_LUOIAPDUNG" 'sn:l-luoi-ap-dung))
+
+(defun sn:l-xoamatcat ( / lo dot ten ss i e xd n)         ; xóa BẢN VẼ của một mặt cắt (file số liệu matcat_*.json giữ nguyên)
+  (if (sn:can-lot)
+    (progn
+      (setq lo (sn:ma-lo) dot (sn:dot) ten *sn-pal-ten* *sn-pal-ten* nil)
+      (if (or (null ten) (= (sn:cat ten) ""))
+        (setq ten (getstring "\nTên mặt cắt cần xóa khỏi bản vẽ: ")))
+      (cond
+        ((or (null ten) (= (sn:cat ten) "")) (sn:bao "Chưa chọn mặt cắt."))
+        ((sn:xac-nhan (strcat "Xóa mặt cắt «" ten "» của lô " lo " khỏi BẢN VẼ này? (số liệu matcat_" ten ".json giữ nguyên) ") nil)
+         (setq n 0)
+         (if (setq ss (ssget "X" '((-3 ("SANNEN")))))
+           (repeat (setq i (sslength ss))
+             (setq e (ssname ss (setq i (1- i))) xd (sn:xd-chuoi e))
+             (if (and xd (>= (length xd) 4) (= (car xd) lo) (= (cadr xd) (itoa dot)) (= (nth 3 xd) "mat_cat")
+                      (= (sn:xd-get xd "ten") ten))
+               (progn (entdel e) (setq n (1+ n))))))
+         (sn:bao (strcat "Đã xóa " (itoa n) " đối tượng của mặt cắt " ten ".")))
+        (T (sn:bao "Đã hủy."))))))
+(defun c:SN_XOAMATCAT () (sn:chay-lenh "SN_XOAMATCAT" 'sn:l-xoamatcat))
 
 ;;; ===========================================================================================
 ;;; 21. NẠP

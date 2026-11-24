@@ -12,7 +12,7 @@ from pathlib import Path
 from . import __version__
 from .paths import Lot
 from .config import doc_lot, nguong, ThieuKhaiBao
-from . import bang_in, dxfio, qc, io_out, lo, luoi, mat, tin, tinh, xem3d, xuat
+from . import bang_in, cong, dxfio, qc, io_out, lo, luoi, mat, tin, tinh, xem3d, xuat
 
 VERBS = ("nhap", "mat", "lo", "luoi", "hieuchinh", "tinh", "xuat", "xem3d")
 CHUA_CAI: dict[str, int] = {}
@@ -217,6 +217,12 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Lô {cfg['ma_lo']}  đợt {cfg['dot']}  "
           f"phương pháp nộp: {cfg['phuong_phap_chinh_thuc']}  (lõi {__version__})")
+
+    # CHỐT CHẶN CỔNG (cong.py): mọi lối vào — dòng lệnh, MCP, menu AutoCAD — đều đi qua đây.
+    ok_cong, ly_do_cong = cong.kiem_cong(lot, a.verb, a.preview)
+    if not ok_cong:
+        print(cong.thong_bao_tu_choi(a.verb, ly_do_cong))
+        return 2
     if a.verb == "nhap":
         try:
             return verb_nhap(lot, cfg, a.preview, a.xac_nhan_anh_xa)

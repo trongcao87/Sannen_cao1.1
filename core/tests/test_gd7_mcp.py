@@ -13,6 +13,8 @@ from sannen import mcp_server as M                                # noqa: E402
 from sannen.mcp_stdio import xu_ly                                # noqa: E402
 from lot_giai_tich import E0, N0, hcn, tao                        # noqa: E402
 
+pytestmark = pytest.mark.cong_that                                # MCP + chốt của CLI đều thật
+
 F_DO = lambda e, n: 10.0 + 0.02 * (e - E0 - 50) + 0.01 * (n - N0 - 30)
 
 

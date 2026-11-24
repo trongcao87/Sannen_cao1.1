@@ -25,59 +25,10 @@ from . import __version__, cli, io_out
 from .mcp_stdio import CongCu, chay_may_chu, schema
 from .paths import Lot
 
-# verb ghi -> cổng phải được duyệt trước
-CONG_CAN = {"mat": 1, "lo": 1, "luoi": 2, "hieuchinh": 2, "tinh": 2, "xuat": 3}
-TEN_CONG = {1: "Cổng 1 — dữ liệu (sau nhap)", 2: "Cổng 2 — bề mặt (sau mat + lo)",
-            3: "Cổng 3 — số liệu (sau tinh)"}
-# file kết quả làm "dấu vân tay" của từng cổng, và file QC phải sạch việc chặn
-DAU_VAN_TAY = {1: ["qc_input.json", "points_moc.csv", "points_do.csv", "boundary.geojson"],
-               2: ["surface_moc.json", "surface_do.json", "lo.json"],
-               3: ["volume.json"]}
-QC_CONG = {1: ["qc_input.json"], 2: ["qc_surface.json", "qc_lo.json"], 3: ["qc_luoi.json", "qc_volume.json"]}
-
-
-def _lot(args: dict) -> Lot:
-    p = Path(args["lot"]).expanduser().resolve()
-    if not (p / "lot.yaml").is_file():
-        raise ValueError(f"{p} không phải thư mục lô (thiếu lot.yaml)")
-    return Lot(p)
-
-
-def dau_van_tay(lot: Lot, cong: int) -> str | None:
-    h = hashlib.sha256()
-    for ten in DAU_VAN_TAY[cong]:
-        p = lot.process_dir / ten
-        if not p.exists():
-            return None
-        h.update(ten.encode()); h.update(p.read_bytes())
-    if cong == 3 and (lot.process_dir / "grid_adjusted.json").exists():
-        h.update((lot.process_dir / "grid_adjusted.json").read_bytes())
-    return h.hexdigest()
-
-
-def doc_cong(lot: Lot) -> dict:
-    p = lot.log_dir / "cong.json"
-    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
-
-
-def viec_chan(lot: Lot, cong: int) -> list[str]:
-    ra = []
-    for ten in QC_CONG[cong]:
-        p = lot.process_dir / ten
-        if p.exists():
-            ra += [f"{f.get('ma')}: {f.get('mo_ta')}" for f in io_out.doc_json(p).get("phat_hien", [])
-                   if f.get("muc") == "chan"]
-    return ra
-
-
-def cong_da_duyet(lot: Lot, cong: int) -> tuple[bool, str]:
-    d = doc_cong(lot).get(str(cong))
-    if not d or not d.get("duyet"):
-        return False, f"{TEN_CONG[cong]} CHƯA được người duyệt"
-    if d.get("dau_van_tay") != dau_van_tay(lot, cong):
-        return False, (f"{TEN_CONG[cong]} đã duyệt lúc {d['luc']} nhưng kết quả đã thay đổi kể từ đó "
-                       "— phê duyệt mất hiệu lực, cần người duyệt lại")
-    return True, ""
+# Logic cổng sống ở `cong.py` (CLI chặn ở đó). Tên cũ giữ lại ở đây cho mã đã import từ mcp_server.
+from .cong import (CONG_CAN, DAU_VAN_TAY, QC_CONG, TEN_CONG, cong_da_duyet, dau_van_tay,  # noqa: F401,E402
+                   doc_cong, duyet_cong, kiem_cong, thong_bao_tu_choi, viec_chan)
+from .cong import lot_tu_args as _lot  # noqa: E402
 
 
 def _chay_cli(argv: list[str]) -> tuple[int, str]:
@@ -99,13 +50,9 @@ def _tra(ma: int, ra: str, them: str = "") -> tuple[str, bool]:
 def goi_verb(verb: str, args: dict) -> tuple[str, bool]:
     lot = _lot(args)
     preview = args.get("preview", True)                     # RULES 4: mặc định xem trước
-    cong = CONG_CAN.get(verb)
-    if cong and not preview:
-        ok, ly_do = cong_da_duyet(lot, cong)
-        if not ok:
-            return (f"TỪ CHỐI ghi `{verb}`: {ly_do}.\nQuy trình: chạy verb với preview, trình "
-                    f"viec_can_lam.md cho người, chờ người nói rõ duyệt, rồi gọi sannen_duyet_cong({cong}).\n"
-                    "Bạn có thể chạy `preview=true` để xem trước mà không cần duyệt."), True
+    ok, ly_do = kiem_cong(lot, verb, preview)          # từ chối sớm cho nhanh; CLI cũng chặn ở cùng chỗ (cong.py)
+    if not ok:
+        return thong_bao_tu_choi(verb, ly_do), True
     argv = [verb, "--lot", str(lot.root)]
     if preview:
         argv.append("--preview")
@@ -134,34 +81,6 @@ def goi_verb(verb: str, args: dict) -> tuple[str, bool]:
                 "mat": "\n→ Khi cả mat và lo xong: trình viec_can_lam.md, chờ người duyệt CỔNG 2.",
                 "tinh": "\n→ Trình kết quả và viec_can_lam.md, chờ người duyệt CỔNG 3 trước khi xuat."}.get(verb, "")
     return _tra(ma, ra, nhac)
-
-
-def duyet_cong(args: dict) -> tuple[str, bool]:
-    lot = _lot(args)
-    cong = int(args["cong"])
-    if cong not in (1, 2, 3):
-        return "cong phải là 1, 2 hoặc 3", True
-    if not args.get("nguoi_duyet") or not args.get("bang_chung"):
-        return ("Phải ghi `nguoi_duyet` và `bang_chung` (trích NGUYÊN VĂN câu người nói đồng ý). "
-                "Agent không được tự duyệt cổng thay người."), True
-    vt = dau_van_tay(lot, cong)
-    if vt is None:
-        return f"{TEN_CONG[cong]}: chưa có kết quả để duyệt — chạy verb tương ứng trước.", True
-    chan = viec_chan(lot, cong)
-    if chan:
-        return (f"Không thể duyệt {TEN_CONG[cong]} khi còn {len(chan)} việc CHẶN:\n  - "
-                + "\n  - ".join(chan[:10])), True
-    d = doc_cong(lot)
-    luc = datetime.now().strftime("%Y-%m-%d %H:%M")
-    d[str(cong)] = {"duyet": True, "luc": luc, "nguoi_duyet": args["nguoi_duyet"],
-                    "bang_chung": args["bang_chung"], "dau_van_tay": vt,
-                    "ghi_chu": args.get("ghi_chu", "")}
-    lot.log_dir.mkdir(parents=True, exist_ok=True)
-    (lot.log_dir / "cong.json").write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
-    with (lot.log_dir / "decisions.md").open("a", encoding="utf-8") as f:
-        f.write(f"- {luc} · {TEN_CONG[cong]} · {args['nguoi_duyet']} duyệt: «{args['bang_chung']}»\n")
-    return f"Đã ghi duyệt {TEN_CONG[cong]} lúc {luc}. Mở khóa: " + ", ".join(
-        v for v, c in CONG_CAN.items() if c == cong) + ".", False
 
 
 def ghi_quyet_dinh(args: dict) -> tuple[str, bool]:
