@@ -57,6 +57,24 @@ def ghi_json(lot: Lot, ten: str, data: dict) -> Path:
     return p
 
 
+def doc_json(p: Path) -> dict:
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+def ghi_viec_gop(lot: Lot, tieu_de: str, tep_qc: list[str]) -> Path:
+    """Phiếu việc của MỘT CỔNG gộp từ nhiều verb (vd cổng 2 = mat + lo).
+
+    Mã việc mang tiền tố của verb (V nhap · M mat · L lo · T tinh) nên không trùng nhau.
+    File nào chưa có thì bỏ qua.
+    """
+    gop: list[dict] = []
+    for ten in tep_qc:
+        p = lot.process_dir / ten
+        if p.exists():
+            gop += doc_json(p).get("phat_hien", [])
+    return ghi_viec_can_lam(lot, tieu_de, gop)
+
+
 def ghi_viec_can_lam(lot: Lot, verb: str, phat_hien: list[dict]) -> Path:
     """Phiếu việc cần làm (SPEC mục 13). Người trả lời gọn bằng mã: V-01 a, V-02 b."""
     p = lot.process_dir / "viec_can_lam.md"

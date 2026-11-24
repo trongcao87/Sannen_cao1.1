@@ -23,6 +23,6 @@ Nhiều đợt trong cùng bản vẽ: thêm hậu tố đợt, ví dụ `SN-DIE
 | `SN-LUOI-NHAN` | Block có thuộc tính | Cao độ mốc / đo / chênh cao tại đỉnh lưới |
 | `SN-LUOI-O` | Text | Khối lượng đào · đắp từng ô |
 | `SN-RANH-DAODAP` | LWPolyline | Đường ranh giới đào–đắp |
-| `SN-3DF-MOC`, `SN-3DF-DO` | 3DFACE | Mặt 3D hai bề mặt TIN, tắt mặc định |
-| `SN-QC` | 3DFACE, Circle | Tam giác dẹt · quá lớn · điểm nghi vấn, màu cảnh báo |
+| `SN-3DF-MOC`, `SN-3DF-DO` | POLYLINE polyface (mỗi bề mặt một đối tượng; 3DFACE nếu `dang=3dface`) | Mặt 3D hai bề mặt TIN, tắt mặc định; mốc xanh lá, đo vàng |
+| `SN-QC` | POLYLINE polyface/3DFACE, Circle | Tam giác dẹt · quá lớn · điểm nghi vấn, màu cảnh báo |
 | `SN-BANG` | Table, Mtext | Bảng khối lượng in trong bản vẽ |

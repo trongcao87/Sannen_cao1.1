@@ -1,0 +1,6 @@
+{
+  "summary":  "Bản kế hoạch kiến trúc và triển khai ứng dụng San nền SNVN Pro chạy local tích hợp cầu nối MCP cho AutoCAD 2022 (Python ActiveX COM & C# ObjectARX), xử lý TIN Delaunay có đường đứt gãy, lưới ô vuông đào đắp, thiết kế Taluy, đường đồng mức, mặt cắt ngang chuẩn TCVN, trực quan hóa 3D WebGL và xuất báo cáo Excel 5 bảng chuẩn SNVN.",
+  "updatedAt":  "2026-11-23T13:41:14.199489380Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

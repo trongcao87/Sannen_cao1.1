@@ -9,3 +9,11 @@ projects/*/lots/*/10_process/*
 projects/*/lots/*/20_output/*
 projects/*/lots/*/90_log/*
 !projects/*/lots/*/*/.gitkeep
+
+*.egg-info/
+
+# Tai lieu ben thu ba va thu vien cai tu npm
+Tham khao/public/assets/aistudio/*.pdf
+Tham khao/node_modules/
+Tham khao/dist/
+Tham khao/.env

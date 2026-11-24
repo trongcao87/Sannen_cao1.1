@@ -46,3 +46,20 @@ bỏ qua. Người trả lời gọn bằng mã (`V-01 a, V-02 b`); ghi mỗi l�
 
 `--preview` là mặc định cho mọi verb có side-effect. Chỉ bỏ `--preview` sau khi
 người duyệt.
+
+## Qua MCP (giai đoạn 7)
+
+Máy chủ `sannen-mcp` (`python -m sannen.mcp_server`) bọc đúng các verb trên thành công cụ `sannen_<verb>`, cộng
+`sannen_trang_thai` (gọi ĐẦU TIÊN mỗi phiên), `sannen_doc_viec`, `sannen_ghi_quyet_dinh`, `sannen_duyet_cong`.
+
+- Verb ghi mặc định `preview=true`. `preview=false` bị **TỪ CHỐI** nếu cổng tương ứng chưa được duyệt hoặc kết quả đã
+  đổi từ lúc duyệt: cổng 1 mở `mat`,`lo`; cổng 2 mở `luoi`,`hieuchinh`,`tinh`; cổng 3 mở `xuat`.
+- `sannen_duyet_cong` chỉ gọi SAU KHI người nói rõ đồng ý, `bang_chung` là nguyên văn câu của người. Không tự duyệt.
+- Mã việc có tiền tố theo verb: **V** nhap · **M** mat · **L** lo/luoi · **T** tinh. Người trả lời gọn: `V-02 b, M-01 a`;
+  ghi mỗi câu trả lời bằng `sannen_ghi_quyet_dinh`.
+- Excel mới: `sannen_nhap` trả mã thoát 2 kèm ánh xạ cột đề xuất. Đưa cho người xem (X là northing, Y là easting!)
+  rồi mới gọi lại với `xac_nhan_anh_xa=true`.
+
+Máy chủ CAD (`python -m sannen_cad.mcp_cad_server --vao <dxf> --ra <dxf>`) phơi 13 công cụ `cad_*`; công cụ ghi mặc định
+`xem_truoc=true`. Bộ điều phối `python -m sannen_cad.ve --lot <lô> --vao <dxf> --ra <dxf>` vẽ cả lô theo đúng thứ tự
+purge → lưới → nhãn → ranh → 3D → bảng.

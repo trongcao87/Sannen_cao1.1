@@ -24,14 +24,14 @@ tuân thủ 12 điều trong đó — chúng là ràng buộc nghiệp vụ, kh�
 | GĐ | Nội dung | Điều kiện qua cửa |
 |---|---|---|
 | 0 ✅ | Khung thư mục, schema, KB, skill, CLI 7 verb, `nhap` chạy thật | `pytest` xanh; `nhap` đọc đúng số điểm |
-| 1 | `nhap` đầy đủ: thêm nguồn Excel, ánh xạ cột nhớ lại được | Báo đúng điểm lỗi cố ý cài; 11.000 điểm dưới 5 s |
-| 2 | `mat`: TIN có ràng buộc đứt gãy, QC tam giác, tra cứu cao độ | Sai số nội suy so mặt giải tích ≈ 0; không cạnh nào cắt qua đứt gãy |
-| 3 | `lo`: chuẩn hóa biên, phép cắt | Diện tích khớp lệnh AREA dưới 0,01 % |
-| 4 | `luoi` + `hieuchinh` | Tổng diện tích các ô = diện tích lô |
-| 5 | `tinh`: ô lưới + lăng trụ + `--sweep` | Khớp nghiệm giải tích; lệch Civil 3D dưới 0,1 % |
-| 6 | `xuat`: workbook 7 sheet, bảng in CAD, truy vết, thuyết minh | Dòng 3 và dòng 8 bảng tổng khớp = 0 |
-| 7 | MCP server bọc CLI | Agent chạy trọn một lô từ yêu cầu bằng lời, dừng đúng 3 cổng |
-| 8 | MCP CAD: 13 tool + 3D Face | Vẽ vào bản vẽ thật rồi purge sạch, chạy hai lần không đè nhau |
+| 1 ✅ | `nhap` đầy đủ: thêm nguồn Excel, ánh xạ cột nhớ lại được | Báo đúng điểm lỗi cố ý cài; 11.000 điểm dưới 5 s |
+| 2 ✅ | `mat`: TIN có ràng buộc đứt gãy, QC tam giác, tra cứu cao độ | Sai số nội suy so mặt giải tích ≈ 0; không cạnh nào cắt qua đứt gãy |
+| 3 ✅ | `lo`: chuẩn hóa biên, phép cắt | Diện tích khớp lệnh AREA dưới 0,01 % |
+| 4 ✅ | `luoi` + `hieuchinh` | Tổng diện tích các ô = diện tích lô |
+| 5 ✅* | `tinh`: ô lưới + lăng trụ + `--sweep` | Khớp nghiệm giải tích; lệch Civil 3D dưới 0,1 % (*chưa có Civil 3D để đối chiếu) |
+| 6 ✅ | `xuat`: workbook 7 sheet, bảng in CAD, truy vết, thuyết minh | Dòng 3 và dòng 8 bảng tổng khớp = 0 |
+| 7 ✅ | MCP server bọc CLI | Agent chạy trọn một lô từ yêu cầu bằng lời, dừng đúng 3 cổng |
+| 8 ✅* | MCP CAD: 13 tool + 3D Face | Vẽ vào bản vẽ thật rồi purge sạch, chạy hai lần không đè nhau (*backend DXF; backend COM AutoCAD chưa cài) |
 
 Giai đoạn 2 là chỗ dễ sa lầy nhất. Nếu sau hai tuần ràng buộc đứt gãy chưa ổn,
 bỏ ràng buộc ở bản đầu (chuyển đứt gãy thành chuỗi điểm dày) để đi tiếp, quay lại sau.
@@ -42,9 +42,13 @@ bỏ ràng buộc ở bản đầu (chuyển đứt gãy thành chuỗi điểm 
   chuẩn mỗi lần sửa lõi — có git mới biết lần sửa nào làm số lệch đi.
 - Thêm test vào `core/tests/` theo ba tầng: nghiệm giải tích · kiểm tra tính chất ·
   đối chiếu phần mềm khác.
-- Không thêm dependency nặng. Hiện chỉ `ezdxf` và `PyYAML`; `openpyxl` cho giai đoạn 6.
+- Không thêm dependency nặng. Hiện chỉ `ezdxf`, `PyYAML` và `openpyxl` (đọc Excel từ GĐ1, ghi workbook ở GĐ6).
 - Viết comment và thông báo bằng tiếng Việt — người đọc là QS, không phải lập trình viên.
 
 ## Cài
     cd core && pip install -e ".[dev]"
     python -m sannen.cli nhap --lot ../projects/KDT-DaiThanh/lots/01-CGP --preview
+
+Menu **SAN NỀN** trong AutoCAD (xem 3D Face, hiệu chỉnh lưới, mặt cắt, bảng biểu, duyệt cổng): `cad/MENU.md`.
+
+Chuỗi đầy đủ: `nhap` → `mat` · `lo` → `luoi` → (`hieuchinh`) → `tinh [--sweep]` → `xuat`; MCP: `sannen-mcp`; CAD: `cad/README.md`.

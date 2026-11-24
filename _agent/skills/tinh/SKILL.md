@@ -46,3 +46,19 @@ Luôn khớp với con số đã tính vì là sản phẩm phụ của phép t�
 
 ## Ra
 `volume.json`. Cổng 3: người xem kết quả, chấp nhận hoặc yêu cầu soát lại.
+
+## Đã cài (giai đoạn 5)
+- Lệnh: `tinh --lot <lô> [--sweep] [--preview]`. Quy ước dấu: dz = z_đo − z_mốc; dz > 0 ĐẮP, dz < 0 ĐÀO.
+- **Lưới**: ô có dz trung bình < 0 tính DT vào đào, còn lại vào đắp. **Lăng trụ**: chồng chính xác hai TIN trên
+  từng ô (cắt tam giác ∩ tam giác ∩ ô), mảnh vắt dz = 0 cắt đôi — tổng không phụ thuộc cách đặt lưới (có test).
+- Mảnh chạm tam giác `thiếu dữ liệu` được tính riêng: **B3** gồm chúng, **B5** loại.
+- Cờ ô lệch lớn: |lưới − lăng trụ| (đào hoặc đắp) > max(`o_lech_lon_pct` % × lớn nhất của đào/đắp lăng trụ,
+  `o_lech_lon_m3`). Hai ngưỡng này CHƯA CHỐT (xem SPEC mục 10) — đề xuất 5 % / 10 m³.
+- `--sweep`: A1–A8 và B1–B5; A7 bỏ qua nếu không có ranh đào–đắp; A8 = 16 gốc × 7 phương = 112 tổ hợp.
+  `can_duoi` lấy theo đào+đắp thấp nhất — đọc theo "Quy tắc đọc" ở trên, KHÔNG gọi là tối ưu.
+- Kiểm tổng: DT đào + DT đắp + DT thiếu dữ liệu = DT lô (CHẶN nếu lệch). Ô thiếu dữ liệu không vào số nộp.
+- RULES 12: khai `dot_truoc: {volume_json: đường/dẫn/volume_dot_truoc.json}` trong `lot.yaml` → ô đảo chiều đắp↔đào so với
+  đợt trước bị CẢNH BÁO.
+- Ra `volume.json` (số liệu từng ô để NGUYÊN độ chính xác), `qc_volume.json` (mã việc **T**), `ranh_dao_dap`
+  (đoạn thẳng VN-2000, để vẽ `SN-RANH-DAODAP`).
+- Chưa cài: hệ số đầm chặt `he_so_dam_chat`; đối chiếu Civil 3D 0,1 % (cần phần mềm ngoài).

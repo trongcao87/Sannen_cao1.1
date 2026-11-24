@@ -36,6 +36,11 @@ def doc_lot(lot_yaml: Path) -> dict[str, Any]:
     if not lot_yaml.exists():
         raise ThieuKhaiBao(f"Không thấy {lot_yaml}. Mỗi lô phải có lot.yaml.")
     cfg = yaml.safe_load(lot_yaml.read_text(encoding="utf-8")) or {}
+    # Người chỉnh lưới trong CAD (menu SAN NỀN) → luoi_tuy_chinh.yaml ở thư mục lô; GHI ĐÈ mục `luoi` của lot.yaml
+    # mà không sửa lot.yaml (giữ nguyên chú thích của người). Xóa file đó là quay về lot.yaml.
+    tc = lot_yaml.parent / "luoi_tuy_chinh.yaml"
+    if tc.exists():
+        cfg["luoi"] = {**(cfg.get("luoi") or {}), **((yaml.safe_load(tc.read_text(encoding="utf-8")) or {}).get("luoi") or {})}
     thieu = [t for t in TRUONG_BAT_BUOC if t not in cfg]
     if thieu:
         raise ThieuKhaiBao("lot.yaml thiếu trường bắt buộc: " + ", ".join(thieu))

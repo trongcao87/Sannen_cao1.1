@@ -36,3 +36,20 @@ hiệu sau cắt biên. Layer `SN-LUOI`, `SN-LUOI-NHAN`.
 ## Hỏi người trước khi chạy
 Kích thước ô, góc và gốc lưới — theo yêu cầu hồ sơ. Nếu chỉ dẫn đo bóc đã chốt thì
 dùng đúng, không tự chọn.
+
+## Đã cài (giai đoạn 4)
+- Lệnh: `luoi --lot <lô> [--o 20] [--goc 17.5|auto] [--goc-luoi E,N] [--preview]`; `--resync --tu-file <json|csv> [--chap-nhan]`.
+  `goc: auto` = phương cạnh dài hộp bao có hướng nhỏ nhất của lô. `lot.yaml` cho phép `luoi.cot_m` / `luoi.hang_m`
+  (kích thước từng cột/hàng).
+- Mã đỉnh `D03-05` (cột 3, hàng 5, tính từ 1); mã ô `O03-05`. Ô là giao của hình vuông lưới với lô đã trừ loại trừ,
+  tính bằng cắt đa giác (Sutherland–Hodgman với ô lồi) — không dùng thư viện cắt tổng quát.
+- Kiểm tổng: **Σ diện tích ô = diện tích lô** (sai số < 1e-9 tương đối), lệch là lỗi phần mềm (CHẶN).
+- Ô có đỉnh ngoài TIN hoặc chạm tam giác thiếu dữ liệu trong lô → `thieu_du_lieu`, KHÔNG tính khối lượng (RULES 8).
+- Cao độ đỉnh nội suy lưu 6 chữ số (0,001 mm): làm tròn 0,1 mm × hàng nghìn m² là hàng chục lít.
+- `--resync`: nhận danh sách `{ma, be_mat, z}` do `cad_read_grid_z` xuất, BÁO chênh lệch, chỉ nhận khi có `--chap-nhan`.
+- **Ngoại suy đỉnh ngoài vùng đo — mặc định CẤM (RULES 8).** Lưới 4 góc cần cao độ ở đỉnh nằm NGOÀI biên lô; khảo sát
+  chỉ đo trong biên thì mọi ô sát biên bị loại (trên 01-CGP: 18/23 ô). Người có thể chấp nhận có điều kiện:
+      luoi: {ngoai_suy_m: 10, ngoai_suy_kieu: gan_nhat}      # hoặc --ngoai-suy 10 --ngoai-suy-kieu gan_nhat
+  `gan_nhat` (mặc định): lấy cao độ tại điểm gần nhất của vùng đo. `mat_phang`: kéo dài mặt phẳng tam giác — **dễ sai
+  nặng trên mái dốc** (01-CGP, 20 m: đào 4.521 m³ so với lăng trụ 68 m³). Mọi ô dùng ngoại suy mang cờ `ngoai_suy` và
+  có việc cảnh báo; ghi quyết định vào `decisions.md`. Cách đúng vẫn là đo bù ra ngoài biên vài mét.

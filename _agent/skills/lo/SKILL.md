@@ -27,3 +27,14 @@ Chạy song song với `mat`.
 
 ## Cổng 2
 Người xác nhận ranh giới lô và vùng loại trừ trước khi đặt lưới.
+
+## Đã cài (giai đoạn 3)
+- Lệnh: `python -m sannen.cli lo --lot <lô> [--preview]`. Ra `lo.json` (vòng đã chuẩn chiều, diện tích) và `qc_lo.json`;
+  mã việc tiền tố **L**.
+- Việc CHẶN: biên không khép kín · biên tự cắt (kèm toạ độ giao điểm) · vùng loại trừ không nằm trọn trong biên ·
+  hai vùng loại trừ chồng nhau (bị trừ hai lần) · hai biên lô cắt nhau · lệch AREA quá `area_lech_pct`.
+- Đối chiếu AREA: người khai số đọc từ lệnh AREA trong `lot.yaml`:
+      dien_tich_area_cad_m2: {bien_lo: [13860.0], loai_tru: [750.0]}     # theo thứ tự trong bản vẽ
+  Chưa khai thì chỉ có thông báo "chưa đối chiếu". Số cung tròn: lõi tự bung bulge **giữ nguyên diện tích**
+  (đỉnh giữa ở bán kính ρ = r·√(Δθ/sinΔθ)); độ lệch tới cung thật ≤ `cung_tron_sai_so_mm`, sai số diện tích ~1e-6.
+  (Cách cũ — đỉnh nằm trên đường tròn hoặc Bézier của ezdxf — lệch cỡ 4s/3r, có thể vượt 0,01 %.)

@@ -43,3 +43,11 @@ Khổ A3 ngang, ba khối:
 
 Lô nhiều ô: tách nhiều khối cạnh nhau trên cùng khung, mỗi khối tối đa 40 dòng,
 chỉ khối cuối mang dòng TỔNG — và tổng đó phải bằng đúng dòng 1 của bảng tổng khớp.
+
+## Ghi chú triển khai (giai đoạn 6)
+
+- Ô **thiếu dữ liệu** (RULES 8) không vào số nộp và không cộng vào DT đào/đắp. Vì vậy dòng 7 = diện tích lô theo AREA
+  trừ vùng loại trừ **trừ diện tích các ô thiếu dữ liệu**, để dòng 8 vẫn phải bằng đúng 0. Ô thiếu dữ liệu được liệt kê
+  trong `01_BANG_O` (cột Ghi chú), `03_DOICHIEU` (cờ) và `05_QC`.
+- Dòng 5: cột E, F mang **%** (so với lăng trụ), cột C, D mang m³. Ô `00_TONGKHOP!C14:C15` giữ hai ngưỡng.
+- Hai ngưỡng ô lệch lớn vẫn CHƯA CHỐT (SPEC mục 10).

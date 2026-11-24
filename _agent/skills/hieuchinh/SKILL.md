@@ -28,3 +28,11 @@ Một vòng vài giây vì phép tính chỉ vài chục mili giây; thời gian
 ## Ra
 `grid_adjusted.json`. Đây là NGUỒN SỰ THẬT của cao độ đỉnh, không phải nhãn trong
 bản vẽ (RULES — Nguồn sự thật).
+
+## Đã cài (giai đoạn 4)
+- Lệnh: `hieuchinh --lot <lô> --dinh D03-05 --z 3.10 [--be-mat-hc moc|do] [--ly-do "..."] [--preview]`;
+  `--tu-file file.csv` (cột `ma,z[,be_mat,ly_do]`, số kiểu Việt Nam `2,5` được); `--bo D03-05` để bỏ hiệu chỉnh.
+- Lệnh IN NGAY chênh cao trung bình và khối lượng trước → sau của mọi ô chạm đỉnh đó — tự tính lại, không có
+  bước "cập nhật chênh cao" riêng để quên.
+- Ghi `grid_adjusted.json` (nguồn sự thật cao độ đỉnh) và một dòng vào `90_log/decisions.md` mỗi hiệu chỉnh.
+  `tinh` đọc file này cho SỐ NỘP; số kiểm lăng trụ không đổi (nó dùng TIN, không dùng đỉnh lưới).

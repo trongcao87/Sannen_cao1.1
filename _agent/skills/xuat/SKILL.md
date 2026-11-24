@@ -30,3 +30,14 @@ mô hình" — phần cuối lấy từ `90_log/decisions.md`.
 
 ## Cổng cuối
 Người duyệt nội dung và ký biên bản nghiệm thu.
+
+## Đã cài (giai đoạn 6)
+- Lệnh: `xuat --lot <lô> [--preview]`. Từ chối chạy (mã 2) nếu `volume.json` cũ: hash đầu vào đổi, hoặc
+  `grid_adjusted.json` đổi sau lần `tinh` cuối. Từ chối ghi (mã 1) nếu dòng 3 hoặc 8 ≠ 0 hoặc còn việc CHẶN ở bất kỳ verb nào.
+- Workbook `KL_<lô>_D<đợt>.xlsx` 7 sheet. `00_TONGKHOP` mở đầu; mọi ô tổng là CÔNG THỨC (SUM / ROUND / IF) tham chiếu
+  các sheet khác. Dòng 7 = DT lô (đã trừ loại trừ) **trừ DT ô thiếu dữ liệu** — vì ô thiếu dữ liệu không vào số nộp.
+- `02_TONGHOP_LO` có dòng "Đợt trước" và "Lũy kế các đợt" khi khai `dot_truoc` ở `lot.yaml`.
+- `bang_in_cad.json`: khối ≤ 40 dòng, chỉ khối cuối có TỔNG (= đúng dòng 1 bảng tổng khớp).
+- `phieu_truy_vet.json` theo `schema/truyvet.schema.json`, thêm `dau_ra` (hash từng file xuất).
+- `thuyet_minh_phuong_phap.md`: căn cứ pháp lý trích nguyên văn `kb/can-cu-phap-ly.md`; "đã xử lý gì trên mô hình" lấy từ
+  `90_log/decisions.md`.

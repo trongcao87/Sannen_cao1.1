@@ -6,20 +6,38 @@ he_toa_do: VN-2000
 don_vi: m
 phuong_phap_chinh_thuc: luoi_o_vuong
 
+# Nguồn điểm: bảng khảo sát nhà thầu nộp (nguon: dxf_layer | excel | csv | dot_truoc).
+# Bản vẽ DXF của nhà thầu trùng bảng này 100 % (đã kiểm: 604/604 điểm mốc, 413/413 điểm đo).
 be_mat_moc:
-  nguon: dxf_layer        # dxf_layer | excel | csv | dot_truoc
-  layer: SN-DIEM-MOC
+  nguon: excel
+  file: BD truoc san lap.xlsx
 be_mat_do:
-  nguon: dxf_layer
-  layer: SN-DIEM-DO
+  nguon: excel
+  file: TỔNG HỢP SỐ LIỆU SSL LÔ 01-CGP.xls
+
+# QUYẾT ĐỊNH CỦA NGƯỜI (23/11/2026): biên lô = biên vùng san lấp, đa tuyến khép kín 74 đỉnh trên layer "0"
+# của ssl01-cgp.dxf (4.974 m²). Bản vẽ nhà thầu chưa gán layer SN-BIENLO và agent không được sửa 00_input.
+bien_lo:
+  nguon: dxf_polyline
+  file: ssl01-cgp.dxf
+  layer: "0"
+  so_dinh: 74
 
 luoi:
   kich_thuoc_o_m: 20
   goc_xoay_do: 0
   # goc_luoi: [445000.0, 1113000.0]   # bỏ trống thì tool tự đặt vừa biên lô
+  # QUYẾT ĐỊNH CỦA NGƯỜI (23/11/2026): vùng thiếu dữ liệu lấy cao độ của ĐIỂM ĐO gần nhất để bù (RULES 8: người chấp nhận).
+  # Mọi ô có đỉnh bù đều mang cờ `ngoai_suy` trong grid.json, volume.json và việc cảnh báo.
+  ngoai_suy_m: 25           # giới hạn khoảng cách tìm điểm đo gần nhất (đo thực tế cần tối đa 23,35 m)
+  ngoai_suy_kieu: diem_gan_nhat
 
 # he_so_dam_chat: 1.0     # k trong V_đắp = k × V_đào, theo thí nghiệm đầm chặt
 
+# Khi khảo sát giao Excel/CSV thay vì bản vẽ, đổi nguồn của bề mặt tương ứng:
+#   be_mat_moc: {nguon: excel, file: ten_file.xlsx, sheet: Sheet1}   # sheet bỏ trống = tự dò
+# Ánh xạ cột: khai ở đây, hoặc để trống — `nhap` sẽ đề xuất, người xác nhận một lần
+# bằng --xac-nhan-anh-xa và lõi nhớ trong anh_xa_cot.yaml (xem skills/nhap/SKILL.md).
 # Ánh xạ cột khi khảo sát giao Excel thay vì bản vẽ.
 # File lô 01-CGP có 7 dòng tiêu đề và XẾP HAI KHỐI ĐIỂM trên mỗi dòng (cột 1-5 và 6-10).
 anh_xa_cot_excel:

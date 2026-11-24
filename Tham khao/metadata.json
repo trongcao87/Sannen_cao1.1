@@ -1,0 +1,6 @@
+{
+  "name": "SNVN Studio — Tính toán San nền & MCP AutoCAD 2022",
+  "description": "Ứng dụng tính toán khối lượng san nền bằng TIN Delaunay có đường đứt gãy và lưới ô vuông chuẩn SNVN, tích hợp cầu nối MCP hai chiều với AutoCAD 2022 (Python ActiveX & C# ObjectARX), vẽ đường đồng mức, mặt cắt ngang TCVN, mô hình 3D WebGL và xuất Excel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
