@@ -52,12 +52,22 @@ namespace SanNen.Palette.Services
         // ---------------------------------------------------------------- sự kiện AutoCAD (bọc try/catch: không để văng AutoCAD)
         static void DocMoi(object s, DocumentCollectionEventArgs e)
         {
-            try { e.Document.CommandEnded += LenhXong; } catch (Exception) { }
+            try
+            {
+                e.Document.CommandEnded += LenhXong;
+                ThreadPool.QueueUserWorkItem(delegate { PythonBridge.XoaDuLieuCu(); YeuCau(true, true); });
+            }
+            catch (Exception) { }
         }
 
         static void DocHuy(object s, DocumentCollectionEventArgs e)
         {
-            try { e.Document.CommandEnded -= LenhXong; } catch (Exception) { }
+            try
+            {
+                e.Document.CommandEnded -= LenhXong;
+                ThreadPool.QueueUserWorkItem(delegate { PythonBridge.XoaDuLieuCu(); });
+            }
+            catch (Exception) { }
         }
 
         static void DocDoi(object s, DocumentCollectionEventArgs e)

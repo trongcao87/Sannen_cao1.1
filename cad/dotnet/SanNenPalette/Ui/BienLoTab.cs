@@ -28,6 +28,7 @@ namespace SanNen.Palette.Ui
             Than.Controls.Add(_bang);
             Than.Controls.Add(_ghiChu);
             Than.Controls.Add(HangNut(
+                Nut("Chọn biên lô trên CAD…", delegate { Bao(CadLenh.ChonBien() ?? "Chọn đa tuyến biên lô trên bản vẽ (SN_CHONBIEN)."); }),
                 Nut("Hiện/Ẩn biên", HienAnBien),
                 Nut("Zoom", ZoomBien),
                 Nut("Nhập lại biên (SN_NHAP)", delegate { GuiLenh("SN_NHAP ", "Nhập lại dữ liệu và biên lô"); }),
@@ -43,7 +44,14 @@ namespace SanNen.Palette.Ui
         List<string> LopBien(QuetKQ q, int dot)
         {
             List<string> r = CadLop.LopCua(q, BangNhom.NguonBienLo, dot);
-            r.AddRange(CadLop.LopCua(q, BangNhom.NguonLoaiTru, dot));
+            foreach (string l in CadLop.LopCua(q, BangNhom.NguonLoaiTru, dot)) if (!r.Contains(l)) r.Add(l);
+            foreach (string l in CadLop.LopCua(q, BangNhom.Tim("ranh"), dot)) if (!r.Contains(l)) r.Add(l);
+            if (r.Count == 0 && q != null)
+            {
+                foreach (string l in q.TrangThaiLop.Keys)
+                    if (l.IndexOf("BIEN", StringComparison.OrdinalIgnoreCase) >= 0 || l.IndexOf("RANH", StringComparison.OrdinalIgnoreCase) >= 0)
+                        r.Add(l);
+            }
             return r;
         }
 
@@ -55,11 +63,11 @@ namespace SanNen.Palette.Ui
             DieuPhoi.LoDot(out lo, out dot);
             if (doc == null || q == null) { Bao("Chưa đọc được bản vẽ hiện hành."); return; }
             List<string> lop = LopBien(q, dot);
-            if (lop.Count == 0) { Bao("Bản vẽ chưa có layer SN-BIENLO / SN-LOAITRU (biên lô nằm ở layer khác của nhà thầu)."); return; }
+            if (lop.Count == 0) { Bao("Bản vẽ chưa có layer biên lô (SN-BIENLO / SN-RANH-DAODAP). Bấm «Chọn biên lô trên CAD…» trước."); return; }
             bool bat = CadLop.TrangThai(q, lop) != "hien";
             List<string> gc = new List<string>();
             int k = CadLop.DatLop(doc, lop, bat, gc);
-            Bao((bat ? "Đã hiện " : "Đã ẩn ") + k + " layer biên lô" + (gc.Count > 0 ? " · " + string.Join("; ", gc.ToArray()) : ""));
+            Bao((bat ? "Đã hiện " : "Đã ẩn ") + k + " layer biên lô (" + string.Join(", ", lop.ToArray()) + ")" + (gc.Count > 0 ? " · " + string.Join("; ", gc.ToArray()) : ""));
             BeginInvoke(new Action(delegate { try { DieuPhoi.YeuCauNgay(false, true); } catch (Exception ex) { BaoLoi(ex); } }));
         }
 

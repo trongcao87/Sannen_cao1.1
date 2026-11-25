@@ -41,6 +41,13 @@ def doc_lot(lot_yaml: Path) -> dict[str, Any]:
     tc = lot_yaml.parent / "luoi_tuy_chinh.yaml"
     if tc.exists():
         cfg["luoi"] = {**(cfg.get("luoi") or {}), **((yaml.safe_load(tc.read_text(encoding="utf-8")) or {}).get("luoi") or {})}
+    # Người chọn dữ liệu khởi tạo bề mặt / breakline / biên lô thủ công từ CAD/Excel → nguon_tuy_chinh.yaml
+    ntc = lot_yaml.parent / "nguon_tuy_chinh.yaml"
+    if ntc.exists():
+        nd = yaml.safe_load(ntc.read_text(encoding="utf-8")) or {}
+        for k in ("be_mat_moc", "be_mat_do", "bien_lo", "loai_tru", "dut_gay", "dut_gay_ap_dung", "anh_xa_cot_excel"):
+            if k in nd and nd[k] is not None:
+                cfg[k] = nd[k]
     thieu = [t for t in TRUONG_BAT_BUOC if t not in cfg]
     if thieu:
         raise ThieuKhaiBao("lot.yaml thiếu trường bắt buộc: " + ", ".join(thieu))

@@ -32,7 +32,7 @@ namespace SanNen.Palette.Ui
             Than.Controls.Add(_ds);
             Than.Controls.Add(_trong);
             Than.Controls.Add(HangNut(
-                Nut("Tạo mặt cắt mới…", delegate { GuiLenh("SN_MATCAT ", "Tạo mặt cắt (chọn hai điểm A, B)"); }),
+                Nut("Tạo mặt cắt mới…", delegate { Bao(CadLenh.MatCat() ?? "Tạo mặt cắt (chọn hai điểm A, B) — xem dòng lệnh AutoCAD."); }),
                 Nut("Zoom tới", ZoomBieuDo),
                 Nut("Zoom tuyến A–B", ZoomTuyen),
                 Nut("Xoá mặt cắt này", Xoa)));
@@ -104,8 +104,8 @@ namespace SanNen.Palette.Ui
                 Bao("Tên mặt cắt có ký tự đặc biệt — gõ SN_XOAMATCAT trên dòng lệnh để xoá.");
                 return;
             }
-            // SN_XOAMATCAT chỉ xoá đối tượng VẼ của mặt cắt trong bản vẽ (file số liệu giữ nguyên) và HỎI Yes/No trên dòng lệnh.
-            GuiLenh("(setq *sn-pal-ten* \"" + m.Ten + "\") SN_XOAMATCAT ", "Xoá mặt cắt " + m.Ten + " khỏi bản vẽ (cần xác nhận)");
+            // Xoá đối tượng VẼ của mặt cắt trong bản vẽ (file số liệu giữ nguyên) và HỎI Yes/No trên dòng lệnh.
+            Bao(CadLenh.XoaMatCat(m.Ten) ?? "Xoá mặt cắt " + m.Ten + " khỏi bản vẽ (cần xác nhận trên dòng lệnh).");
         }
     }
 }

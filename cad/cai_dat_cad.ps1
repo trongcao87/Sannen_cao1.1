@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   Ghi cấu hình cho menu SAN NỀN trong AutoCAD (%APPDATA%\SanNen\sannen.cfg).
 
@@ -62,11 +62,88 @@ $noiDung = "python=$Python`ncad=$goc`nlisp=$lisp`nlot=$Lot`n"
 
 Write-Host "Đã ghi $cfg"
 Write-Host $noiDung
-Write-Host @"
-CÁCH NẠP TRONG AUTOCAD 2022
-  1. Gõ APPLOAD → Contents (Startup Suite) → Add → chọn $lisp\sannen.lsp
-     (mỗi lần mở AutoCAD menu SAN NỀN tự được nạp). Nếu hỏi "Always load / Load once": chọn Always load.
-  2. Hoặc nạp một lần:   (load "$($lisp -replace '\\','/')/sannen.lsp")
-  3. Gõ SN_LOT để chọn lô (nếu chưa khai -Lot), rồi gõ SN hoặc dùng menu thả xuống "SAN NỀN".
-Kiểm tra nhanh:  SN_TRANGTHAI
-"@
+
+# ---- Tự động đăng ký vào AutoCAD Startup Suite, Applications (.NET autoload) và acaddoc.lsp ----
+$sannenLsp = Join-Path $lisp "sannen.lsp"
+$binDir = Join-Path $goc "dotnet\bin"
+$drawDll = Join-Path $binDir "SanNenDraw.dll"
+$palDll = Join-Path $binDir "SanNenPalette.dll"
+
+# 1. Đăng ký vào mọi phiên bản/profile AutoCAD trong HKCU
+$acadKeys = Get-ChildItem -Path "HKCU:\Software\Autodesk\AutoCAD" -Recurse -ErrorAction SilentlyContinue |
+    Where-Object { $_.PSChildName -match "^ACAD-" }
+foreach ($ak in $acadKeys) {
+    $akPath = $ak.PSPath
+    # 1a. Đăng ký .NET Demand-Load Applications (LOADCTRLS = 2: tự nạp ngay khi mở AutoCAD)
+    $appsKey = Join-Path $akPath "Applications"
+    if (Test-Path $drawDll) {
+        $kDraw = Join-Path $appsKey "SanNenDraw"
+        New-Item -Path $kDraw -Force | Out-Null
+        Set-ItemProperty -Path $kDraw -Name "DESCRIPTION" -Value "SAN NEN DrawEngine & Commands (.NET)"
+        Set-ItemProperty -Path $kDraw -Name "LOADCTRLS" -Value 2 -Type DWord
+        Set-ItemProperty -Path $kDraw -Name "LOADER" -Value $drawDll
+        Set-ItemProperty -Path $kDraw -Name "MANAGED" -Value 1 -Type DWord
+    }
+    if (Test-Path $palDll) {
+        $kPal = Join-Path $appsKey "SanNenPalette"
+        New-Item -Path $kPal -Force | Out-Null
+        Set-ItemProperty -Path $kPal -Name "DESCRIPTION" -Value "SAN NEN Dockable Palette (.NET)"
+        Set-ItemProperty -Path $kPal -Name "LOADCTRLS" -Value 2 -Type DWord
+        Set-ItemProperty -Path $kPal -Name "LOADER" -Value $palDll
+        Set-ItemProperty -Path $kPal -Name "MANAGED" -Value 1 -Type DWord
+    }
+
+    # 1b. Đăng ký sannen.lsp vào Appload Startup Suite và thêm TRUSTEDPATHS trong từng Profile
+    $profRoot = Join-Path $akPath "Profiles"
+    if (Test-Path $profRoot) {
+        foreach ($pf in (Get-ChildItem -Path $profRoot -ErrorAction SilentlyContinue)) {
+            $stKey = Join-Path $pf.PSPath "Dialogs\Appload\Startup"
+            New-Item -Path $stKey -Force | Out-Null
+            $props = Get-ItemProperty -Path $stKey -ErrorAction SilentlyContinue
+            $n = if ($props -and $null -ne $props.NumStartup) { [int]$props.NumStartup } else { 0 }
+            $daCo = $false
+            for ($i = 1; $i -le $n; $i++) {
+                $v = $props."${i}Startup"
+                if ($v -and ($v -ieq $sannenLsp -or $v -match "sannen\.lsp$")) {
+                    Set-ItemProperty -Path $stKey -Name "${i}Startup" -Value $sannenLsp
+                    $daCo = $true
+                }
+            }
+            if (-not $daCo) {
+                $n++
+                Set-ItemProperty -Path $stKey -Name "${n}Startup" -Value $sannenLsp
+                Set-ItemProperty -Path $stKey -Name "NumStartup" -Value $n -Type DWord
+            }
+
+            # Thêm thư mục lisp và dotnet\bin vào TRUSTEDPATHS để AutoCAD không hỏi hộp thoại bảo mật mỗi lần mở
+            $varKey = Join-Path $pf.PSPath "Variables"
+            if (Test-Path $varKey) {
+                $tpObj = Get-ItemProperty -Path $varKey -Name "TRUSTEDPATHS" -ErrorAction SilentlyContinue
+                $tp = if ($tpObj -and $tpObj.TRUSTEDPATHS) { [string]$tpObj.TRUSTEDPATHS } else { "" }
+                foreach ($dir in @($lisp, $binDir, "$thuMuc\bin")) {
+                    if ($tp -notlike "*$dir*") {
+                        $tp = if ([string]::IsNullOrWhiteSpace($tp)) { $dir } else { "$tp;$dir" }
+                    }
+                }
+                Set-ItemProperty -Path $varKey -Name "TRUSTEDPATHS" -Value $tp
+            }
+        }
+    }
+}
+
+# 2. Ghi vào acaddoc.lsp trong thư mục Support của AutoCAD (tự chạy mỗi khi mở bản vẽ mới/cũ)
+$supDirs = Get-ChildItem -Path "$env:APPDATA\Autodesk" -Recurse -Directory -Filter "Support" -ErrorAction SilentlyContinue
+$lenhLoad = "(if (findfile `"$($sannenLsp -replace '\\','/')`") (load `"$($sannenLsp -replace '\\','/')`"))"
+foreach ($sd in $supDirs) {
+    if ($sd.FullName -match "AutoCAD") {
+        $acaddoc = Join-Path $sd.FullName "acaddoc.lsp"
+        $cu = if (Test-Path $acaddoc) { [IO.File]::ReadAllText($acaddoc, [Text.Encoding]::UTF8) } else { "" }
+        if ($cu -notmatch "sannen\.lsp") {
+            $moi = ($cu.TrimEnd() + "`n;; Tự động nạp công cụ SAN NỀN khi mở AutoCAD`n" + $lenhLoad + "`n").TrimStart()
+            [IO.File]::WriteAllText($acaddoc, $moi, (New-Object Text.UTF8Encoding($false)))
+            Write-Host "Đã đăng ký tự động nạp trong: $acaddoc"
+        }
+    }
+}
+
+Write-Host "Đã cài đặt tự động khởi động SAN NỀN (Menu + LISP + .NET Palette + DrawEngine) mỗi khi mở AutoCAD!"

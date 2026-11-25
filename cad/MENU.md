@@ -199,7 +199,7 @@ vẽ 1,4 s trong một transaction; vẽ lần hai: purge 100.000 đối tượn
 | **SanNenDraw (bước 2):** `ve-ke-hoach` đúng lược đồ, deterministic (hai lần cùng byte), chỉ đọc lô, số đối tượng khớp backend DXF; biên dịch sạch `SanNenDraw.dll` (chỉ accoremgd+acdbmgd) và palette tham chiếu nó | ✅ `test_gd17_drawengine.py` |
 | **SanNenDraw trong AutoCAD 2022 thật không giao diện:** NETLOAD → `SN_KEHOACH_NET` / `SN_VE_NET` / `SN_XOA_NET(_Y)` / `SN_TIN3D_NET`: đếm theo layer + XDATA khớp kế hoạch **và khớp từng đối tượng do file .lsp vẽ**; vẽ hai lần không nhân đôi; purge chỉ đúng lô+đợt; mặt 3D = 1 polyface/bề mặt, layer 3D tắt, view `SN_TIN3D`; LISP `SN_VE`/`SN_XOA` chuyển sang `_NET` khi có DLL và lùi về LISP khi tắt; 100.000 thực thể | ✅ `test_gd17_drawengine.py` (accoreconsole) |
 | **SanNenDraw trên giao diện:** hộp xác nhận Yes/No hiển thị, `SN_TIN3D` (DCL) → `SN_TIN3D_NET` → góc nhìn SW Isometric nhìn thấy được, nút palette *Vẽ lại lưới* / *Xem 3D*, tô bóng `VSCURRENT` sau `SN_TIN3D_NET`, hoàn tác (Ctrl+Z) một bước | ❌ cần AutoCAD có giao diện — chưa kiểm |
-| Kế hoạch vẽ mặt cắt (`--che-do mat-cat`) có kiểm ở mức JSON; **lệnh C# vẽ mặt cắt (`SN_MATCAT`) chưa chuyển sang C#** (bước 3) | 🟡 |
+| Kế hoạch vẽ mặt cắt (`--che-do mat-cat`), bảng (`--che-do bang`) và các lệnh C# Bước 3 (`SN_MATCAT_NET`, `SN_XOAMATCAT_NET`, `SN_BANG_NET`, `SN_LUOI_NET`, `SN_DICHLUOI_NET`, `SN_XOAYLUOI_NET`, `SN_LUOI_BO_NET`, `SN_SUADINH_NET`, `SN_DONGBO_NET`, `SN_DUYET_NET`) đã hoàn thành phần mã & biên dịch; **chờ kiểm trên AutoCAD có giao diện** trước khi gỡ LISP ở Bước 4 | 🟡 |
 
 ### Checklist 5 phút để bạn kiểm giao diện
 1. `APPLOAD` → `sannen.lsp`: có menu **SAN NỀN**? (không có thì gõ `SN`).

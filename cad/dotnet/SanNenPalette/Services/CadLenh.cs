@@ -58,6 +58,33 @@ namespace SanNen.Palette.Services
             if (!CoDraw()) return Gui("SN_TIN3D ");
             return Gui("(if sn:nap-draw (sn:nap-draw)) SN_TIN3D_NET ");
         }
+
+        static string GoiNet(string lenhNet, string lenhLisp)
+        {
+            if (!CoDraw()) return Gui(lenhLisp);
+            return Gui("(if sn:nap-draw (sn:nap-draw)) " + lenhNet);
+        }
+
+        public static string MatCat() { return Gui("SN_MATCAT "); }
+        public static string Bang() { return Gui("SN_BANG "); }
+        public static string Luoi() { return Gui("SN_LUOI "); }
+        public static string TaoMat() { return Gui("SN_TAOMAT "); }
+        public static string ChonBien() { return Gui("SN_CHONBIEN "); }
+        public static string ChonDutGay() { return Gui("SN_CHONDUTGAY "); }
+        public static string LamMoiXoaCu() { return Gui("SN_LAMMOI "); }
+        public static string DichLuoi() { return Gui("SN_DICHLUOI "); }
+        public static string XoayLuoi() { return Gui("SN_XOAYLUOI "); }
+        public static string Duyet() { return Gui("SN_DUYET "); }
+
+        public static string XoaMatCat(string ten)
+        {
+            return Gui("(setq *sn-pal-ten* \"" + ten + "\") SN_XOAMATCAT ");
+        }
+
+        public static string LuoiApDung(string cot, string hang, string bu)
+        {
+            return Gui("(setq *sn-pal-luoi* (list \"" + cot + "\" \"" + hang + "\" \"" + bu + "\")) SN_LUOIAPDUNG ");
+        }
         /// <summary>Đặt một biến LISP chứa chuỗi ASCII rồi chạy lệnh (cách truyền giá trị vào lệnh LISP có xác nhận).</summary>
         public static string LenhCoBien(string bienLisp, string giaTri, string lenh)
         {

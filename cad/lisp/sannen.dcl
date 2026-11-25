@@ -92,30 +92,40 @@ sn_tin3d : dialog {
   }
 }
 
-// ---- Hieu chinh luoi (tuong duong menu Ctrl + chuot phai cua SNVN) -----------------------------------
+// ---- Hieu chinh luoi (tuong duong DD_TAOLUOI + menu Ctrl + chuot phai cua SNVN) ----------------------
 sn_luoi : dialog {
-  label = "SAN NEN - Luoi";
+  label = "SAN NEN - Tao va hieu chinh luoi";
   : text { key = "t_ten"; value = ""; width = 74; }
   : text { key = "t_tieu"; value = ""; width = 74; }
   : text { key = "t_tieu2"; value = ""; width = 74; }
   : boxed_column {
     label = "";
-    : text { key = "t_nhom1"; value = ""; width = 60; }
+    : text { key = "t_nhom1"; value = ""; width = 70; }
     : row {
-      : text { key = "n_kt"; value = ""; width = 18; }
-      : edit_box { key = "e_kt"; label = ""; edit_width = 8; }
-      : text { key = "n_goc"; value = ""; width = 14; }
-      : edit_box { key = "e_goc"; label = ""; edit_width = 8; }
+      : text { key = "n_kt_mau"; value = ""; width = 20; }
+      : popup_list { key = "p_kt_mau"; label = ""; edit_width = 16; }
+      : text { key = "n_kt"; value = ""; width = 12; }
+      : edit_box { key = "e_kt"; label = ""; edit_width = 6; }
+      : text { key = "n_goc"; value = ""; width = 10; }
+      : edit_box { key = "e_goc"; label = ""; edit_width = 6; }
     }
     : row {
+      : button { key = "b_vung"; label = "Quet / Chon lo tren CAD..."; width = 36; }
+      : button { key = "b_diem_dat"; label = "Chon diem dat luoi..."; width = 34; }
+    }
+    : row {
+      : text { key = "n_ktvung"; value = ""; width = 28; }
+      : text { key = "t_ktvung"; value = ""; width = 42; }
+    }
+    : text { key = "t_gocluoi"; value = ""; width = 70; }
+    : row {
       : text { key = "n_cot"; value = ""; width = 22; }
-      : edit_box { key = "e_cot"; label = ""; edit_width = 40; }
+      : edit_box { key = "e_cot"; label = ""; edit_width = 44; }
     }
     : row {
       : text { key = "n_hang"; value = ""; width = 22; }
-      : edit_box { key = "e_hang"; label = ""; edit_width = 40; }
+      : edit_box { key = "e_hang"; label = ""; edit_width = 44; }
     }
-    : text { key = "t_gocluoi"; value = ""; width = 70; }
     : row {
       : text { key = "n_ns"; value = ""; width = 28; }
       : edit_box { key = "e_ns"; label = ""; edit_width = 8; }
@@ -147,14 +157,16 @@ sn_luoi : dialog {
     }
   }
   : row {
-    : button { key = "b_di_chuyen"; label = "Di chuyen luoi..."; width = 20; }
-    : button { key = "b_xoay"; label = "Xoay luoi..."; width = 20; }
-    : button { key = "b_vung"; label = "Chon vung..."; width = 20; }
-    : button { key = "b_ve_lot"; label = "Ve lot.yaml"; width = 20; }
+    : button { key = "b_di_chuyen"; label = "Di chuyen luoi..."; width = 18; }
+    : button { key = "b_xoay"; label = "Xoay luoi..."; width = 18; }
+    : button { key = "b_gan_cd"; label = "Gan cao do nut"; width = 18; }
+    : button { key = "b_ve_lot"; label = "Ve lot.yaml"; width = 18; }
   }
   : row {
-    : button { key = "b_ap_dung"; label = "Ap dung"; is_default = true; width = 20; }
-    : button { key = "b_dong"; label = "Dong"; is_cancel = true; width = 20; }
+    : button { key = "b_ap_dung"; label = "Tao luoi..."; is_default = true; width = 18; }
+    : button { key = "b_xoa_luoi"; label = "Xoa luoi"; width = 18; }
+    : button { key = "b_sua_cd"; label = "Sua cao do..."; width = 20; }
+    : button { key = "b_dong"; label = "Dong"; is_cancel = true; width = 14; }
   }
 }
 
@@ -284,5 +296,62 @@ sn_duyet : dialog {
   : row {
     : button { key = "b_duyet"; label = "Duyet cong"; is_default = true; width = 18; }
     : button { key = "b_dong"; label = "Dong"; is_cancel = true; width = 18; }
+  }
+}
+
+// ---- Khoi tao be mat thu cong (DD_DH cua SNVN: MHTN goc + MHTK tinh toan + Breakline + Bien lo) ------
+sn_taomat : dialog {
+  label = "SAN NEN - Quan ly mo hinh dia hinh";
+  : text { key = "t_ten"; value = ""; width = 74; }
+  : text { key = "t_tieu"; value = ""; width = 74; }
+  : text { key = "t_tieu2"; value = ""; width = 74; }
+  : boxed_column {
+    label = "";
+    : text { key = "t_nhom_bm"; value = ""; width = 68; }
+    : row {
+      : text { key = "n_loai_bm"; value = ""; width = 22; }
+      : popup_list { key = "p_loai_bm"; label = ""; edit_width = 44; }
+    }
+    : row {
+      : text { key = "n_loc"; value = ""; width = 68; }
+    }
+    : row {
+      : toggle { key = "t_loc_diem"; label = ""; value = "1"; } : text { key = "n_loc_diem"; value = ""; width = 16; }
+      : toggle { key = "t_loc_khoi"; label = ""; value = "1"; } : text { key = "n_loc_khoi"; value = ""; width = 16; }
+      : toggle { key = "t_loc_chu"; label = ""; value = "1"; } : text { key = "n_loc_chu"; value = ""; width = 18; }
+    }
+    : row {
+      : toggle { key = "t_loc_line"; label = ""; value = "1"; } : text { key = "n_loc_line"; value = ""; width = 16; }
+      : toggle { key = "t_loc_pl3d"; label = ""; value = "1"; } : text { key = "n_loc_pl3d"; value = ""; width = 16; }
+      : toggle { key = "t_loc_pl2d"; label = ""; value = "1"; } : text { key = "n_loc_pl2d"; value = ""; width = 18; }
+    }
+    : row {
+      : button { key = "b_cad_moc"; label = "Chon MHTN tren CAD..."; width = 24; }
+      : button { key = "b_xls_moc"; label = "Chon MHTN tu Excel..."; width = 24; }
+    }
+    : text { key = "t_tt_moc"; value = ""; width = 68; }
+    : row {
+      : button { key = "b_cad_do"; label = "Chon MHTK tren CAD..."; width = 24; }
+      : button { key = "b_xls_do"; label = "Chon MHTK tu Excel..."; width = 24; }
+    }
+    : text { key = "t_tt_do"; value = ""; width = 68; }
+  }
+  : boxed_column {
+    label = "";
+    : text { key = "t_nhom_bl"; value = ""; width = 68; }
+    : row {
+      : button { key = "b_chon_dg"; label = "Chon duong Breakline..."; width = 24; }
+      : button { key = "b_chon_bien"; label = "Chon bien lo (ranh)..."; width = 24; }
+      : button { key = "b_chon_lt"; label = "Chon vung loai tru..."; width = 22; }
+    }
+    : text { key = "t_tt_dg"; value = ""; width = 68; }
+    : text { key = "t_tt_bien"; value = ""; width = 68; }
+  }
+  : text { key = "t_tt"; value = ""; width = 74; }
+  : text { key = "t_tt2"; value = ""; width = 74; }
+  : text { key = "t_tt3"; value = ""; width = 74; }
+  : row {
+    : button { key = "b_tao_bm"; label = "Tao moi / Cap nhat MH"; is_default = true; width = 28; }
+    : button { key = "b_dong"; label = "Thoat"; is_cancel = true; width = 18; }
   }
 }

@@ -405,7 +405,9 @@ def doc_bang(lot: Lot, cau_hinh: dict, cfg: dict, nhan: str, *,
     if not ten_file:
         raise LoiNguon(f"lot.yaml: be_mat_{nhan} dùng nguon={cau_hinh.get('nguon')} "
                        "nhưng chưa khai `file` (tên file trong 00_input/).")
-    path = lot.input_dir / ten_file
+    path = Path(ten_file) if Path(ten_file).is_absolute() else (
+        (lot.input_dir / ten_file) if (lot.input_dir / ten_file).is_file() else (lot.root / ten_file).resolve()
+    )
     if not path.is_file():
         raise LoiNguon(f"Không thấy {path}. Đặt file khảo sát vào 00_input/.")
 

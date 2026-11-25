@@ -11,6 +11,7 @@ lệnh ghi thêm file `--lsp` (BackendLisp) để LISP `(load)`. Mọi con số 
 """
 from __future__ import annotations
 import argparse
+from datetime import datetime
 import json
 import math
 import re
@@ -147,10 +148,14 @@ def _ve_lsp(lot: Lot, lsp: Path, lop: list[str] | None, dang: str = "polyface") 
 def _luoi_doc(lot: Lot) -> dict:
     ts = luoi_sua.trang_thai(lot)
     tong = io_out.doc_json(lot.process_dir / "grid.json")["tong"]
+    hb = None
+    if (lot.process_dir / "lo.json").exists():
+        hb = io_out.doc_json(lot.process_dir / "lo.json").get("hop_bao")
     return {"kich_thuoc": ts["kich_thuoc_o_m"], "goc_xoay_do": ts["goc_xoay_do"], "goc_luoi": ts["goc_luoi"],
             "cot": luoi_sua.dinh_dang(ts["cot_m"]), "hang": luoi_sua.dinh_dang(ts["hang_m"]),
             "nx": len(ts["cot_m"]), "ny": len(ts["hang_m"]), "ngoai_suy_m": ts["ngoai_suy_m"],
-            "ngoai_suy_kieu": ts["ngoai_suy_kieu"], "dt_o": tong["dt_o_m2"], "dt_lo": tong["dt_lo_m2"], "so_o": tong["so_o"]}
+            "ngoai_suy_kieu": ts["ngoai_suy_kieu"], "dt_o": tong["dt_o_m2"], "dt_lo": tong["dt_lo_m2"], "so_o": tong["so_o"],
+            "hop_bao": hb}
 
 
 class GiaoDich:
@@ -178,15 +183,23 @@ class GiaoDich:
             p.unlink()
 
 
-def _tinh_lai(lot: Lot) -> None:
-    """luoi rồi tinh (giữ --sweep nếu volume.json hiện có sweep). Mã ≥ 1 ở bước nào thì ném Loi."""
+def _tinh_lai(lot: Lot, chi_luoi: bool = False) -> None:
+    """luoi rồi tinh (giữ --sweep nếu volume.json hiện có sweep). Nếu chi_luoi=True hoặc chưa có volume.json mà chỉ đặt lưới thì không ép chạy tinh."""
     sweep = False
     vp = lot.process_dir / "volume.json"
     if vp.exists():
         sweep = "sweep" in io_out.doc_json(vp)
+    # Nếu người dùng tạo lưới trong CAD mà cổng 2 chưa ghi nhận duyệt (và không có việc chặn ở cổng 2), tự ghi nhận từ thao tác CAD
+    ok_c2, _ = cong.cong_da_duyet(lot, 2)
+    if not ok_c2 and (lot.process_dir / "surface_moc.json").exists() and (lot.process_dir / "lo.json").exists():
+        if not cong.viec_chan(lot, 2):
+            cong.duyet_cong({"lot": str(lot.root), "cong": 2, "nguoi_duyet": "Người dùng CAD",
+                             "bang_chung": "Người dùng tạo/hiệu chỉnh lưới trong AutoCAD"})
     ma, ra = _cli(lot, "luoi")
     if ma >= 1:
         raise Loi("Lưới không dùng được: " + _chan(lot, "qc_luoi.json", ra))
+    if chi_luoi:
+        return
     ma, ra = _cli(lot, "tinh", *(["--sweep"] if sweep else []))
     if ma >= 1:
         raise Loi("Tính khối lượng bị chặn: " + _chan(lot, "qc_volume.json", ra))
@@ -227,8 +240,12 @@ def l_ve_ke_hoach(a, lot):
                 raise Loi("--che-do mat-cat cần --ten <tên mặt cắt>")
             kh = ke_hoach.tao_ke_hoach_mat_cat(lot.root, a.ten, _en(a.goc_ve, "--goc-ve") if a.goc_ve else None,
                                                float(a.ty_le_dung or 5.0), a.trai_x, a.duoi_y)
+        elif che_do == "bang":
+            if not a.loai or not a.goc_ve:
+                raise Loi("--che-do bang cần --loai (tong|tong-hop|o) và --goc-ve E,N")
+            kh = ke_hoach.tao_ke_hoach_bang(lot.root, a.loai, _en(a.goc_ve, "--goc-ve"))
         else:
-            raise Loi("--che-do phải là ve, tin3d hoặc mat-cat")
+            raise Loi("--che-do phải là ve, tin3d, mat-cat hoặc bang")
     except (FileNotFoundError, ValueError) as e:
         raise Loi(str(e))
     b = ke_hoach.ghi_json(kh)
@@ -309,9 +326,27 @@ def l_thong_tin(a, lot):
 
 
 def l_luoi_doc(a, lot):
-    if not (lot.process_dir / "grid.json").exists():
+    if (lot.process_dir / "grid.json").exists():
+        return _luoi_doc(lot), ""
+    if not getattr(a, "cho_phep_chua_co", False):
         raise Loi("Chưa có grid.json — chạy luoi trước")
-    return _luoi_doc(lot), ""
+    cfg = doc_lot(lot.lot_yaml)
+    cl = cfg.get("luoi") or {}
+    kt = float(cl.get("kich_thuoc_o_m", 20.0) or 20.0)
+    goc = float(cl.get("goc_xoay_do", 0.0) or 0.0) if not isinstance(cl.get("goc_xoay_do"), str) else 0.0
+    gl = [0.0, 0.0]
+    dt_lo = 0.0
+    hb = None
+    if (lot.process_dir / "lo.json").exists():
+        lo_d = io_out.doc_json(lot.process_dir / "lo.json")
+        dt_lo = float(lo_d.get("tong", {}).get("dt_hieu_dung_m2", 0.0))
+        hb = lo_d.get("hop_bao")
+    # Khi chưa tạo lưới (chưa có grid.json): cột/hàng/nx/ny để trống để chỉ hiển thị sau khi người dùng quét lô & tạo lưới
+    return {"kich_thuoc": kt, "goc_xoay_do": goc, "goc_luoi": gl,
+            "cot": "", "hang": "",
+            "nx": 0, "ny": 0, "ngoai_suy_m": float(cl.get("ngoai_suy_m", 0.0) or 0.0),
+            "ngoai_suy_kieu": cl.get("ngoai_suy_kieu", "gan_nhat"), "dt_o": 0.0, "dt_lo": dt_lo, "so_o": 0,
+            "hop_bao": hb}, ""
 
 
 def _kw_luoi_sua(a) -> dict:
@@ -331,38 +366,137 @@ def _kw_luoi_sua(a) -> dict:
 def l_luoi_sua(a, lot):
     if not a.lenh_sua:
         raise Loi("Thiếu --lenh")
-    if not (lot.process_dir / "grid.json").exists():
+    if not (lot.process_dir / "grid.json").exists() and a.lenh_sua != "dat":
         raise Loi("Chưa có grid.json — chạy luoi trước")
-    moi = luoi_sua.ap_dung(luoi_sua.trang_thai(lot), a.lenh_sua, **_kw_luoi_sua(a))       # lỗi mẫu/chỉ số: chưa đổi gì
-    lsp = None if a.khong_tinh else _lsp(a)
+    st_cu = luoi_sua.trang_thai(lot) if (lot.process_dir / "grid.json").exists() else {
+        "kich_thuoc_o_m": float((doc_lot(lot.lot_yaml).get("luoi") or {}).get("kich_thuoc_o_m", 20.0)),
+        "goc_xoay_do": 0.0, "goc_luoi": [0.0, 0.0], "cot_m": [20.0], "hang_m": [20.0],
+        "ngoai_suy_m": 0.0, "ngoai_suy_kieu": "gan_nhat"
+    }
+    moi = luoi_sua.ap_dung(st_cu, a.lenh_sua, **_kw_luoi_sua(a))       # lỗi mẫu/chỉ số: chưa đổi gì
+    lsp = None if a.khong_tinh else (Path(a.lsp) if a.lsp else (None if a.json else _lsp(a)))
+    chi_luoi = getattr(a, "chi_luoi", False)
     gd = GiaoDich(lot)
     try:
         r = luoi_sua.ghi_tuy_chinh(lot, moi, a.ly_do or f"lệnh {a.lenh_sua}")
         if not a.khong_tinh:
-            _tinh_lai(lot)
-            _ve_lsp(lot, lsp, ["luoi", "nhan", "o", "ranh"])
+            if chi_luoi and (lot.process_dir / "surface_moc.json").exists() and (lot.process_dir / "lo.json").exists():
+                _tinh_lai(lot, chi_luoi=True)
+                if lsp is not None:
+                    _ve_lsp(lot, lsp, ["luoi", "nhan"])
+            elif chi_luoi:
+                # Chưa dựng bề mặt/biên lô mà người dùng đã vẽ khung lưới chữ nhật lên CAD trước (như DD_TAOLUOI của SNVN)
+                if lsp is not None:
+                    cfg = doc_lot(lot.lot_yaml)
+                    be = BackendLisp()
+                    be.cad_purge_sn(str(cfg["ma_lo"]), int(cfg["dot"]), xem_truoc=False, loai=("luoi",))
+                    be.cad_draw_grid(str(cfg["ma_lo"]), int(cfg["dot"]), "khung-luoi", moi, xem_truoc=False)
+                    be.luu(lsp)
+            else:
+                _tinh_lai(lot, chi_luoi=False)
+                if lsp is not None:
+                    _ve_lsp(lot, lsp, ["luoi", "nhan", "o", "ranh"])
     except Exception:
         gd.khoi_phuc()
         raise
-    du = _luoi_doc(lot) if not a.khong_tinh else luoi_sua.trang_thai(lot)
+    du = _luoi_doc(lot) if (not a.khong_tinh and (lot.process_dir / "grid.json").exists()) else {
+        "kich_thuoc": moi["kich_thuoc_o_m"], "goc_xoay_do": moi["goc_xoay_do"], "goc_luoi": moi["goc_luoi"],
+        "cot": luoi_sua.dinh_dang(moi["cot_m"]), "hang": luoi_sua.dinh_dang(moi["hang_m"]),
+        "nx": len(moi["cot_m"]), "ny": len(moi["hang_m"]), "ngoai_suy_m": moi.get("ngoai_suy_m", 0.0),
+        "ngoai_suy_kieu": moi.get("ngoai_suy_kieu", "gan_nhat"), "dt_o": 0.0, "dt_lo": 0.0, "so_o": 0
+    }
     if not a.khong_tinh:
         q = lot.process_dir / "qc_luoi.json"
         du["canh_bao"] = [f["mo_ta"] for f in io_out.doc_json(q).get("phat_hien", []) if f.get("muc") == "canh_bao"] if q.exists() else []
         du["cat_hieu_chinh"] = r["da_cat_hieu_chinh_dinh"]
-    return du, ("Đã áp dụng và tính lại" if not a.khong_tinh else "Đã ghi lưới tùy chỉnh (chưa tính lại)")
+    return du, ("Đã tạo/cập nhật lưới" if chi_luoi else ("Đã áp dụng và tính lại" if not a.khong_tinh else "Đã ghi lưới tùy chỉnh (chưa tính lại)"))
 
 
 def l_luoi_ve_lai_lot_yaml(a, lot):
-    lsp = _lsp(a)
+    lsp = Path(a.lsp) if a.lsp else (None if a.json else _lsp(a))
     gd = GiaoDich(lot)
     try:
         luoi_sua.xoa_tuy_chinh(lot)
         _tinh_lai(lot)
-        _ve_lsp(lot, lsp, ["luoi", "nhan", "o", "ranh"])
+        if lsp is not None:
+            _ve_lsp(lot, lsp, ["luoi", "nhan", "o", "ranh"])
     except Exception:
         gd.khoi_phuc()
         raise
     return _luoi_doc(lot), "Đã bỏ lưới tùy chỉnh, quay về lot.yaml và tính lại"
+
+
+def l_luoi_xoa(a, lot):
+    """Xóa lưới hiện tại của lô (grid.json, qc_luoi.json, grid_adjusted.json, volume.json, luoi_tuy_chinh.yaml)."""
+    da_xoa: list[str] = []
+    for ten in ("grid.json", "qc_luoi.json", "grid_adjusted.json", "volume.json", "qc_volume.json"):
+        p = lot.process_dir / ten
+        if p.is_file():
+            p.unlink()
+            da_xoa.append(ten)
+    tc = lot.root / luoi_sua.FILE_TUY_CHINH
+    if tc.is_file():
+        tc.unlink()
+        da_xoa.append(tc.name)
+    lot.log_dir.mkdir(parents=True, exist_ok=True)
+    luc = datetime.now().strftime("%Y-%m-%d %H:%M")
+    with (lot.log_dir / "decisions.md").open("a", encoding="utf-8") as f:
+        f.write(f"- {luc} · xoa-luoi (CAD) · Người xóa lưới hiện tại ({len(da_xoa)} file)\n")
+    a_doc = argparse.Namespace(cho_phep_chua_co=True)
+    du, _ = l_luoi_doc(a_doc, lot)
+    return du, f"Đã xóa lưới ({len(da_xoa)} file số liệu lưới) và xóa đối tượng lưới trên bản vẽ"
+
+
+def l_luoi_import_dxf(a, lot):
+    """Import thông số lưới ô vuông/chữ nhật từ file DXF hoặc file JSON các đoạn thẳng trên CAD."""
+    from sannen import dxfio as _dxfio
+    if not a.tu_file:
+        raise Loi("Thiếu --tu-file (đường dẫn file .dxf hoặc .json chứa đường lưới)")
+    try:
+        kq = _dxfio.doc_luoi_dxf(Path(a.tu_file), getattr(a, "layer_luoi", None))
+    except Exception as e:
+        raise Loi(f"Không import được lưới từ file: {e}")
+    cot_str = luoi_sua.dinh_dang(kq["cot_m"])
+    hang_str = luoi_sua.dinh_dang(kq["hang_m"])
+    st_cu = luoi_sua.trang_thai(lot) if (lot.process_dir / "grid.json").exists() else {
+        "kich_thuoc_o_m": float(kq.get("kich_thuoc_o_m", 20.0)),
+        "goc_xoay_do": 0.0, "goc_luoi": [0.0, 0.0], "cot_m": [20.0], "hang_m": [20.0],
+        "ngoai_suy_m": 0.0, "ngoai_suy_kieu": "gan_nhat"
+    }
+    dt_lo = 0.0
+    if (lot.process_dir / "lo.json").exists():
+        dt_lo = float(io_out.doc_json(lot.process_dir / "lo.json").get("tong", {}).get("dt_hieu_dung_m2", 0.0))
+    du_doc = {
+        "kich_thuoc": float(kq.get("kich_thuoc_o_m", st_cu["kich_thuoc_o_m"])),
+        "goc_xoay_do": float(kq["goc_xoay_do"]),
+        "goc_luoi": [float(kq["goc_luoi"][0]), float(kq["goc_luoi"][1])],
+        "cot": cot_str, "hang": hang_str,
+        "nx": len(kq["cot_m"]), "ny": len(kq["hang_m"]),
+        "ngoai_suy_m": float(st_cu.get("ngoai_suy_m", 0.0)),
+        "ngoai_suy_kieu": str(st_cu.get("ngoai_suy_kieu", "gan_nhat")),
+        "dt_o": 0.0, "dt_lo": dt_lo, "so_o": 0
+    }
+    if getattr(a, "chi_doc", False):
+        return du_doc, f"Đã nhận diện lưới từ file: {du_doc['nx']} cột ({cot_str}) × {du_doc['ny']} hàng ({hang_str})"
+    moi = {**st_cu, "kich_thuoc_o_m": du_doc["kich_thuoc"], "goc_xoay_do": du_doc["goc_xoay_do"],
+           "goc_luoi": du_doc["goc_luoi"], "cot_m": list(kq["cot_m"]), "hang_m": list(kq["hang_m"])}
+    lsp = None if a.khong_tinh else (Path(a.lsp) if a.lsp else (None if a.json else _lsp(a)))
+    gd = GiaoDich(lot)
+    try:
+        r = luoi_sua.ghi_tuy_chinh(lot, moi, a.ly_do or f"import lưới từ {Path(a.tu_file).name}")
+        if not a.khong_tinh:
+            _tinh_lai(lot)
+            if lsp is not None:
+                _ve_lsp(lot, lsp, ["luoi", "nhan", "o", "ranh"])
+    except Exception:
+        gd.khoi_phuc()
+        raise
+    du = _luoi_doc(lot) if not a.khong_tinh else du_doc
+    if not a.khong_tinh:
+        q = lot.process_dir / "qc_luoi.json"
+        du["canh_bao"] = [f["mo_ta"] for f in io_out.doc_json(q).get("phat_hien", []) if f.get("muc") == "canh_bao"] if q.exists() else []
+        du["cat_hieu_chinh"] = r["da_cat_hieu_chinh_dinh"]
+    return du, f"Đã import lưới ({du_doc['nx']} cột × {du_doc['ny']} hàng)" + (" và tính lại" if not a.khong_tinh else "")
 
 
 _TEN_HOP_LE = re.compile(r"^[\w\-. ]{1,40}$", re.UNICODE)
@@ -383,12 +517,13 @@ def l_mat_cat(a, lot):
     except ValueError as e:
         raise Loi(str(e))
     vung = bo_cuc.hop_bao_ent(ent[3:])
-    cfg = doc_lot(lot.lot_yaml)
-    ma_lo, dot, hs = str(cfg["ma_lo"]), int(cfg["dot"]), str(kq["hash_dau_vao"] or "")[:16]
-    be = BackendLisp()
-    be.cad_purge_sn(ma_lo, dot, xem_truoc=False, loai=("mat_cat",), ex=[f"ten={ten}"])   # vẽ lại cùng tên → không nhân đôi
-    be.ve_ent(ma_lo, dot, hs, "mat_cat", "SN-MATCAT", ent, False, ten=ten)
-    be.luu(_lsp(a))
+    if a.lsp or not a.json:
+        cfg = doc_lot(lot.lot_yaml)
+        ma_lo, dot, hs = str(cfg["ma_lo"]), int(cfg["dot"]), str(kq["hash_dau_vao"] or "")[:16]
+        be = BackendLisp()
+        be.cad_purge_sn(ma_lo, dot, xem_truoc=False, loai=("mat_cat",), ex=[f"ten={ten}"])   # vẽ lại cùng tên → không nhân đôi
+        be.ve_ent(ma_lo, dot, hs, "mat_cat", "SN-MATCAT", ent, False, ten=ten)
+        be.luu(_lsp(a))
     return {"chieu_dai": kq["chieu_dai_m"], "dien_tich_dao": kq["dien_tich_dao_m2"],
             "dien_tich_dap": kq["dien_tich_dap_m2"], "doan_thieu": kq["doan_thieu_du_lieu_m"],
             "csv": str(lot.output_dir / f"matcat_{ten}.csv"), "goc_ve": [gv[0], gv[1]], "mac_dinh": mac_dinh,
@@ -460,16 +595,20 @@ def l_dong_bo(a, lot):
 def l_hieuchinh_nhieu(a, lot):
     if not a.tu_file or not Path(a.tu_file).is_file():
         raise Loi("Thiếu --tu-file hoặc không thấy file CSV (ma,z,be_mat,ly_do)")
-    lsp = _lsp(a)
+    lsp = Path(a.lsp) if a.lsp else (None if a.json else _lsp(a))
     ma, ra = _cli(lot, "hieuchinh", "--tu-file", str(a.tu_file), *(["--ly-do", a.ly_do] if a.ly_do else []))
     if ma >= 2:
         raise Loi("Hiệu chỉnh đỉnh bị từ chối: " + " ".join(ra.strip().splitlines()[-3:]))
-    sweep = "sweep" in io_out.doc_json(lot.process_dir / "volume.json") if (lot.process_dir / "volume.json").exists() else False
-    ma2, ra2 = _cli(lot, "tinh", *(["--sweep"] if sweep else []))
-    if ma2 >= 1:
-        raise Loi("Đã ghi hiệu chỉnh nhưng tính lại bị chặn: " + _chan(lot, "qc_volume.json", ra2))
-    du = _ve_lsp(lot, lsp, ["nhan", "o"])
-    return {"ma_thoat": ma, "van_ban": ra, "da_ve": du}, "Đã hiệu chỉnh đỉnh, tính lại và sinh lệnh vẽ lại nhãn"
+    co_vol = (lot.process_dir / "volume.json").exists()
+    if co_vol and not getattr(a, "chi_luoi", False):
+        sweep = "sweep" in io_out.doc_json(lot.process_dir / "volume.json")
+        ma2, ra2 = _cli(lot, "tinh", *(["--sweep"] if sweep else []))
+        if ma2 >= 1:
+            raise Loi("Đã ghi hiệu chỉnh nhưng tính lại bị chặn: " + _chan(lot, "qc_volume.json", ra2))
+        du = _ve_lsp(lot, lsp, ["nhan", "o"]) if lsp is not None else {}
+    else:
+        du = _ve_lsp(lot, lsp, ["nhan"]) if lsp is not None else {}
+    return {"ma_thoat": ma, "van_ban": ra, "da_ve": du}, "Đã hiệu chỉnh cao độ mắt lưới và cập nhật chênh cao" + (" (đã sinh lệnh vẽ lại nhãn)" if lsp else "")
 
 
 def l_canh_bao(a, lot):
@@ -491,9 +630,10 @@ def l_o_tai(a, lot):
     if a.e is None or a.n is None:
         raise Loi("Cần --e E --n N")
     gp, vp = lot.process_dir / "grid.json", lot.process_dir / "volume.json"
-    if not (gp.exists() and vp.exists()):
-        raise Loi("Chưa có grid.json/volume.json — chạy luoi và tinh trước")
-    ts = io_out.doc_json(gp)["tham_so"]
+    if not gp.exists():
+        raise Loi("Chưa có grid.json — chạy luoi trước")
+    g_doc = io_out.doc_json(gp)
+    ts = g_doc["tham_so"]
     th = math.radians(ts["goc_xoay_do"])
     dx, dy = float(a.e) - ts["goc_luoi"][0], float(a.n) - ts["goc_luoi"][1]
     u, v = dx * math.cos(th) + dy * math.sin(th), -dx * math.sin(th) + dy * math.cos(th)
@@ -509,11 +649,172 @@ def l_o_tai(a, lot):
     if i is None or j is None:
         raise Loi("Điểm nằm ngoài lưới")
     ma = _luoi.ma_o(i, j)
-    o = next((c for c in io_out.doc_json(vp)["o"] if c["ma"] == ma), None)
-    if o is None:
-        raise Loi(f"Điểm nằm trong lưới (ô {ma}) nhưng ngoài lô — ô này không có diện tích trong lô")
-    return {"ma": ma, "kl_dao": o["kl_dao_m3"], "kl_dap": o["kl_dap_m3"], "dt": o["dt_huu_hieu_m2"],
-            "thieu_du_lieu": bool(o["thieu_du_lieu"])}, ""
+    if vp.exists():
+        o = next((c for c in io_out.doc_json(vp)["o"] if c["ma"] == ma), None)
+        if o is None:
+            raise Loi(f"Điểm nằm trong lưới (ô {ma}) nhưng ngoài lô — ô này không có diện tích trong lô")
+        return {"ma": ma, "kl_dao": o["kl_dao_m3"], "kl_dap": o["kl_dap_m3"], "dt": o["dt_huu_hieu_m2"],
+                "thieu_du_lieu": bool(o["thieu_du_lieu"])}, ""
+    o_g = next((c for c in g_doc.get("o", []) if c["ma"] == ma), None)
+    return {"ma": ma, "kl_dao": 0.0, "kl_dap": 0.0, "dt": o_g["dt_huu_hieu_m2"] if o_g else 0.0,
+            "thieu_du_lieu": bool(o_g["thieu_du_lieu"]) if o_g else False}, ""
+
+
+def l_khoi_tao_be_mat(a, lot):
+    """Nhận cấu hình khởi tạo thủ công từ CAD/Excel (điểm mốc/đo, breakline, biên lô), ghi nguon_tuy_chinh.yaml,
+    chạy nhap + mat + lo để khởi tạo bề mặt TIN và chuẩn hóa biên lô."""
+    import shutil
+    from datetime import datetime
+    ntc_p = lot.root / "nguon_tuy_chinh.yaml"
+    ntc = (yaml.safe_load(ntc_p.read_text(encoding="utf-8")) or {}) if ntc_p.exists() else {}
+    lot.process_dir.mkdir(parents=True, exist_ok=True)
+
+    for nhan in ("moc", "do"):
+        nguon = getattr(a, f"nguon_{nhan}", None)
+        file_p = getattr(a, f"file_{nhan}", None)
+        if not nguon or not file_p:
+            continue
+        src = Path(file_p)
+        if nguon in ("cad_chon", "csv_diem"):
+            if not src.is_file():
+                raise Loi(f"Không thấy file điểm {nhan} từ AutoCAD: {src}")
+            dst = lot.process_dir / f"cad_chon_{nhan}.csv"
+            if src.resolve() != dst.resolve():
+                shutil.copy2(src, dst)
+            ntc[f"be_mat_{nhan}"] = {"nguon": "cad_chon", "file": f"10_process/cad_chon_{nhan}.csv"}
+        elif nguon in ("excel", "csv"):
+            # Nếu file nằm ngoài 00_input/, copy vào 10_process/ hoặc nếu nằm trong 00_input/ thì dùng tên file
+            if src.is_file():
+                in_p = lot.input_dir / src.name
+                if in_p.is_file() and in_p.resolve() == src.resolve():
+                    rel_f = src.name
+                else:
+                    # RULES 3: không ghi vào 00_input/, lưu bản sao vào 10_process/ nếu file ngoài 00_input/
+                    # hoặc nếu bang_in đọc từ 00_input, kiểm tra xem file có trong 00_input không
+                    if (lot.input_dir / src.name).is_file():
+                        rel_f = src.name
+                    else:
+                        dst = lot.process_dir / f"excel_{nhan}{src.suffix.lower()}"
+                        shutil.copy2(src, dst)
+                        rel_f = f"../10_process/{dst.name}"
+            else:
+                rel_f = str(file_p)
+            d_bm = {"nguon": nguon, "file": rel_f}
+            sh_ten = getattr(a, f"sheet_{nhan}", None)
+            if sh_ten:
+                d_bm["sheet"] = sh_ten
+            ntc[f"be_mat_{nhan}"] = d_bm
+        elif nguon in ("dxf_layer", "dxf"):
+            d_bm = {"nguon": "dxf_layer", "layer": getattr(a, f"layer_{nhan}", None) or ("*" if nguon == "dxf" else ("SN-DIEM-MOC" if nhan == "moc" else "SN-DIEM-DO"))}
+            if file_p and file_p != "-":
+                src = Path(file_p)
+                if src.is_file():
+                    try:
+                        rel_f = str(src.resolve().relative_to(lot.input_dir.resolve()))
+                    except ValueError:
+                        try:
+                            rel_f = "../" + str(src.resolve().relative_to(lot.root.resolve())).replace("\\", "/")
+                        except ValueError:
+                            dst = lot.process_dir / f"dxf_{nhan}{src.suffix.lower()}"
+                            shutil.copy2(src, dst)
+                            rel_f = f"../10_process/{dst.name}"
+                    d_bm["file"] = rel_f
+                else:
+                    d_bm["file"] = str(file_p)
+            ntc[f"be_mat_{nhan}"] = d_bm
+
+    if getattr(a, "file_dut_gay", None):
+        src = Path(a.file_dut_gay)
+        if not src.is_file():
+            raise Loi(f"Không thấy file breakline từ AutoCAD: {src}")
+        dst = lot.process_dir / "cad_chon_dut_gay.json"
+        if src.resolve() != dst.resolve():
+            shutil.copy2(src, dst)
+        ntc["dut_gay"] = {"nguon": "cad_chon", "file": "10_process/cad_chon_dut_gay.json"}
+
+    if getattr(a, "file_bien_lo", None):
+        src = Path(a.file_bien_lo)
+        if not src.is_file():
+            raise Loi(f"Không thấy file biên lô từ AutoCAD: {src}")
+        dst = lot.process_dir / "cad_chon_bien_lo.json"
+        if src.resolve() != dst.resolve():
+            shutil.copy2(src, dst)
+        ntc["bien_lo"] = {"nguon": "cad_chon", "file": "10_process/cad_chon_bien_lo.json"}
+
+    if getattr(a, "file_loai_tru", None):
+        src = Path(a.file_loai_tru)
+        if src.is_file():
+            dst = lot.process_dir / "cad_chon_loai_tru.json"
+            if src.resolve() != dst.resolve():
+                shutil.copy2(src, dst)
+            ntc["loai_tru"] = {"nguon": "cad_chon", "file": "10_process/cad_chon_loai_tru.json"}
+
+    ntc_p.write_text("# Nguồn dữ liệu do NGƯỜI chọn thủ công từ AutoCAD / Excel — ghi đè lot.yaml.\n"
+                     + yaml.safe_dump(ntc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    lot.log_dir.mkdir(parents=True, exist_ok=True)
+    luc = datetime.now().strftime("%Y-%m-%d %H:%M")
+    with (lot.log_dir / "decisions.md").open("a", encoding="utf-8") as f:
+        f.write(f"- {luc} · khoi-tao-be-mat (CAD) · Người khởi tạo dữ liệu bề mặt/breakline/biên lô thủ công\n")
+
+    # Bước 1: chạy nhap (với --xac-nhan-anh-xa nếu người đã chọn file Excel trực tiếp trong hộp thoại)
+    nhap_args = ["nhap"] + (["--xac-nhan-anh-xa"] if getattr(a, "xac_nhan_anh_xa", False) else [])
+    ma_nhap, ra_nhap = _cli(lot, *nhap_args)
+    if ma_nhap >= 2:
+        raise Loi("Nhập dữ liệu dừng: " + " ".join(ra_nhap.strip().splitlines()[-4:]), {"van_ban": ra_nhap, "ma_thoat": ma_nhap})
+
+    # Nếu chỉ lưu nguồn và chạy nhap (hoặc chưa yêu cầu dựng TIN ngay)
+    if getattr(a, "chi_nhap", False):
+        ra_lo_nhanh = ""
+        if getattr(a, "file_bien_lo", None) or getattr(a, "file_loai_tru", None):
+            ok_c1_n, _ = cong.cong_da_duyet(lot, 1)
+            if not ok_c1_n and not cong.viec_chan(lot, 1):
+                cong.duyet_cong({"lot": str(lot.root), "cong": 1, "nguoi_duyet": getattr(a, "nguoi", None) or "Người dùng CAD",
+                                 "bang_chung": "Người dùng chọn biên lô thủ công trong AutoCAD"})
+            if cong.cong_da_duyet(lot, 1)[0]:
+                _, ra_lo_nhanh = _cli(lot, "lo")
+        return {"ma_thoat": ma_nhap, "van_ban": (ra_nhap + "\n" + ra_lo_nhanh).strip(), "nguon": ntc}, "Đã nạp dữ liệu đầu vào"
+
+    # Người chủ động bấm "Khởi tạo bề mặt" trong CAD → nếu cổng 1 chưa duyệt và không có việc chặn ở cổng 1,
+    # ghi nhận người duyệt cổng 1 thông qua hành động bấm nút khởi tạo bề mặt (nếu còn việc chặn thì dừng báo rõ).
+    ok_c1, _ = cong.cong_da_duyet(lot, 1)
+    if not ok_c1:
+        chan1 = cong.viec_chan(lot, 1)
+        if chan1:
+            raise Loi("Dữ liệu đầu vào có việc CHẶN, cần xử lý trước khi dựng bề mặt: " + " | ".join(chan1),
+                      {"van_ban": ra_nhap, "ma_thoat": ma_nhap})
+        cong.duyet_cong({"lot": str(lot.root), "cong": 1, "nguoi_duyet": getattr(a, "nguoi", None) or "Người dùng CAD",
+                         "bang_chung": "Người dùng khởi tạo bề mặt thủ công trong AutoCAD"})
+
+    be_mat = getattr(a, "be_mat", None) or "ca-hai"
+    ma_mat, ra_mat = _cli(lot, "mat", "--be-mat", be_mat)
+    if ma_mat >= 2:
+        raise Loi("Dựng bề mặt TIN dừng: " + " ".join(ra_mat.strip().splitlines()[-3:]),
+                  {"van_ban": ra_nhap + "\n" + ra_mat, "ma_thoat": ma_mat})
+
+    ra_lo = ""
+    ma_lo = 0
+    if (lot.process_dir / "boundary.geojson").exists():
+        b_feats = json.loads((lot.process_dir / "boundary.geojson").read_text(encoding="utf-8")).get("features", [])
+        if b_feats:
+            ma_lo, ra_lo = _cli(lot, "lo")
+            if ma_lo >= 2:
+                raise Loi("Chuẩn hóa biên lô dừng: " + " ".join(ra_lo.strip().splitlines()[-3:]),
+                          {"van_ban": ra_nhap + "\n" + ra_mat + "\n" + ra_lo, "ma_thoat": ma_lo})
+
+    if a.lsp:
+        try:
+            nc = ve.ngu_canh(lot.root)
+            be = BackendLisp()
+            chon = ["moc", "do"] if be_mat == "ca-hai" else [be_mat]
+            be.cad_purge_sn(nc["ma_lo"], nc["dot"], xem_truoc=False, loai=("mat_3d", "qc"))
+            ve.ve_mat_3d(be, nc, chon, dang=_dang(a))
+            be.luu(Path(a.lsp))
+        except Exception:
+            pass
+
+    vb_gop = "\n".join(x.strip() for x in (ra_nhap, ra_mat, ra_lo) if x.strip())
+    return {"ma_thoat": max(ma_nhap, ma_mat, ma_lo), "van_ban": vb_gop, "nguon": ntc}, \
+        "Đã khởi tạo bề mặt thành công — sẵn sàng cho Agent rà soát, chuẩn hóa và tạo nhiều phương án"
 
 
 def l_duyet(a, lot):
@@ -524,12 +825,40 @@ def l_duyet(a, lot):
     return None, van_ban
 
 
+def l_xoa_du_lieu_cu(a, lot):
+    """Xóa sạch dữ liệu xử lý/kết quả cũ đã có từ trước (10_process, 20_output, cấu hình ghi đè và cổng duyệt), giữ nguyên 00_input/."""
+    da_xoa: list[str] = []
+    for d in (lot.process_dir, lot.output_dir):
+        if d.is_dir():
+            for p in sorted(d.iterdir()):
+                if p.is_file():
+                    p.unlink()
+                    da_xoa.append(p.name)
+    for ten in ("nguon_tuy_chinh.yaml", luoi_sua.FILE_TUY_CHINH):
+        p = lot.root / ten
+        if p.is_file():
+            p.unlink()
+            da_xoa.append(ten)
+    cong_p = lot.log_dir / "cong.json"
+    if cong_p.is_file():
+        cong_p.unlink()
+        da_xoa.append("cong.json")
+    lot.log_dir.mkdir(parents=True, exist_ok=True)
+    luc = datetime.now().strftime("%Y-%m-%d %H:%M")
+    with (lot.log_dir / "decisions.md").open("a", encoding="utf-8") as f:
+        f.write(f"- {luc} · lam-moi (CAD) · Xóa dữ liệu xử lý cũ ({len(da_xoa)} file) để khởi tạo lại từ đầu\n")
+    return {"so_file_xoa": len(da_xoa), "da_xoa": da_xoa}, f"Đã xóa {len(da_xoa)} file dữ liệu cũ — lô đã sạch để khởi tạo mới"
+
+
 LENH = {"trang-thai": l_trang_thai, "ve": l_ve, "ve-ke-hoach": l_ve_ke_hoach, "tin3d": l_tin3d, "tin3d-tat": l_tin3d_tat,
         "xem3d": l_xem3d,
         "luoi-doc": l_luoi_doc, "thong-tin": l_thong_tin,
-        "luoi-sua": l_luoi_sua, "luoi-ve-lai-lot-yaml": l_luoi_ve_lai_lot_yaml, "mat-cat": l_mat_cat, "bang": l_bang,
+        "luoi-sua": l_luoi_sua, "luoi-ve-lai-lot-yaml": l_luoi_ve_lai_lot_yaml, "luoi-import-dxf": l_luoi_import_dxf,
+        "luoi-xoa": l_luoi_xoa,
+        "mat-cat": l_mat_cat, "bang": l_bang,
         "chay": l_chay, "canh-bao": l_canh_bao, "o-tai": l_o_tai, "dong-bo": l_dong_bo,
-        "hieuchinh-nhieu": l_hieuchinh_nhieu, "duyet": l_duyet}
+        "hieuchinh-nhieu": l_hieuchinh_nhieu, "duyet": l_duyet, "khoi-tao-be-mat": l_khoi_tao_be_mat,
+        "xoa-du-lieu-cu": l_xoa_du_lieu_cu}
 
 
 # =========================================================================== điểm vào
@@ -560,6 +889,7 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--kieu")
     ap.add_argument("--ly-do")
     ap.add_argument("--khong-tinh", action="store_true")
+    ap.add_argument("--cho-phep-chua-co", action="store_true", help="luoi-doc: trả thông số mặc định từ lot.yaml khi chưa có grid.json")
     ap.add_argument("--a")
     ap.add_argument("--b")
     ap.add_argument("--buoc", type=float)
@@ -579,6 +909,22 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--cong", type=int)
     ap.add_argument("--nguoi")
     ap.add_argument("--bang-chung")
+    ap.add_argument("--nguon-moc")
+    ap.add_argument("--file-moc")
+    ap.add_argument("--sheet-moc")
+    ap.add_argument("--layer-moc")
+    ap.add_argument("--nguon-do")
+    ap.add_argument("--file-do")
+    ap.add_argument("--sheet-do")
+    ap.add_argument("--layer-do")
+    ap.add_argument("--file-dut-gay")
+    ap.add_argument("--file-bien-lo")
+    ap.add_argument("--file-loai-tru")
+    ap.add_argument("--xac-nhan-anh-xa", action="store_true")
+    ap.add_argument("--chi-nhap", action="store_true")
+    ap.add_argument("--chi-luoi", action="store_true", help="luoi-sua: chỉ đặt/cắt lưới và nội suy cao độ nút lưới, chưa chạy tính đào đắp")
+    ap.add_argument("--chi-doc", action="store_true", help="luoi-import-dxf: chỉ đọc thông số lưới từ file, không ghi lô")
+    ap.add_argument("--layer-luoi", help="luoi-import-dxf: tên layer chứa lưới trong file DXF")
     return ap
 
 

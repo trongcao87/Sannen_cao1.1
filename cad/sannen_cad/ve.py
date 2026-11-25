@@ -24,18 +24,21 @@ def _doc(p: Path) -> dict:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-def ngu_canh(lot_root: str | Path) -> dict:
+def ngu_canh(lot_root: str | Path, can_vol: bool = True) -> dict:
     """Mã lô, đợt, hash truy vết và các file kết quả cần cho việc vẽ."""
     from sannen.paths import Lot
     lot = Lot(Path(lot_root).resolve())
     ps = lot.process_dir
-    for ten in ("grid.json", "volume.json"):
-        if not (ps / ten).exists():
-            raise FileNotFoundError(f"Chưa có {ten} — chạy luoi và tinh trước")
+    if not (ps / "grid.json").exists():
+        raise FileNotFoundError("Chưa có grid.json — chạy luoi và tinh trước")
+    if can_vol and not (ps / "volume.json").exists():
+        raise FileNotFoundError("Chưa có volume.json — chạy luoi và tinh trước")
     cfg = yaml.safe_load(lot.lot_yaml.read_text(encoding="utf-8"))
-    vol = _doc(ps / "volume.json")
+    grid = _doc(ps / "grid.json")
+    vol = _doc(ps / "volume.json") if (ps / "volume.json").exists() else {}
+    hash_tv = str((vol or grid).get("hash_dau_vao") or "")[:16]
     return {"lot": lot, "ps": ps, "ma_lo": str(cfg["ma_lo"]), "dot": int(cfg["dot"]),
-            "grid": _doc(ps / "grid.json"), "vol": vol, "hash_tv": str(vol["hash_dau_vao"])[:16]}
+            "grid": grid, "vol": vol, "hash_tv": hash_tv}
 
 
 def ve_mat_3d(be: Backend, nc: dict, nhan_list: list[str], xem_truoc: bool = False, dang: str = "3dface") -> dict:
@@ -62,7 +65,8 @@ def ve_ket_qua(be: Backend, lot_root: str | Path, *, xem_truoc: bool = False, ve
         raise ValueError(f"Nhóm vẽ lạ: {', '.join(sorted(xau))} (có: {', '.join(TAT_CA)})")
     if lop is None and not ve_3d:
         chon.remove("3d")
-    nc = ngu_canh(lot_root)
+    can_vol = any(g in chon for g in ("o", "ranh", "bang"))
+    nc = ngu_canh(lot_root, can_vol=can_vol)
     lot, ps, ma_lo, dot, grid, vol, hash_tv = (nc[k] for k in ("lot", "ps", "ma_lo", "dot", "grid", "vol", "hash_tv"))
     kq: dict[str, dict] = {}
 

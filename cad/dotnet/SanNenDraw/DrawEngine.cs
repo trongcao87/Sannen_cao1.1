@@ -289,7 +289,7 @@ namespace SanNen.Draw
         }
 
         /// <summary>Đọc XDATA "SANNEN" thành danh sách chuỗi; null nếu không có hoặc ít hơn 4 trường.</summary>
-        static List<string> DocXd(Entity e)
+        internal static List<string> DocXd(Entity e)
         {
             using (ResultBuffer rb = e.GetXDataForApplication(AppId))
             {

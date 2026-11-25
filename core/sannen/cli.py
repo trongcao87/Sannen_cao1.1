@@ -32,15 +32,25 @@ def _nap_be_mat(cfg: dict, nhan: str, d: "dxfio.DocDuoc | None", preview: bool,
                 xac_nhan: bool, lot: Lot):
     """Một bề mặt, theo nguồn lot.yaml khai: dxf_layer | excel | csv.
 
-    Trả về (điểm, kết quả bảng hoặc None). Nguồn lạ thì dừng — không đoán (RULES 7).
+    Trả về (điểm, kết quả bảng / dict thông tin DXF riêng hoặc None). Nguồn lạ thì dừng — không đoán (RULES 7).
     """
     ch = cfg[f"be_mat_{nhan}"]
     nguon = ch.get("nguon", "dxf_layer")
     if nguon == "dxf_layer":
+        file_ten = ch.get("file")
+        layer = ch.get("layer", LAYER_BE_MAT[nhan])
+        if file_ten:
+            dxf_p = lot.input_dir / str(file_ten)
+            if not dxf_p.is_file():
+                raise bang_in.LoiNguon(
+                    f"be_mat_{nhan}.file = {file_ten} không tồn tại trong 00_input/.")
+            prefix = "MOC" if nhan == "moc" else "DO"
+            diem, h = dxfio.doc_diem_layer(dxf_p, str(layer), prefix)
+            return diem, {"file": dxf_p.name, "hash_sha256": h,
+                          "layer": str(layer), "so_diem": len(diem)}
         if d is None:
             raise bang_in.LoiNguon(
                 f"be_mat_{nhan} lấy từ DXF nhưng 00_input/ không có file .dxf nào.")
-        layer = ch.get("layer", LAYER_BE_MAT[nhan])
         if layer.upper() != LAYER_BE_MAT[nhan]:
             raise bang_in.LoiNguon(
                 f"be_mat_{nhan}.layer = {layer} khác quy ước {LAYER_BE_MAT[nhan]} "
@@ -49,8 +59,26 @@ def _nap_be_mat(cfg: dict, nhan: str, d: "dxfio.DocDuoc | None", preview: bool,
     if nguon in ("excel", "csv"):
         kq = bang_in.doc_bang(lot, ch, cfg, nhan, xac_nhan=xac_nhan, ghi=not preview)
         return kq.diem, kq
+    if nguon in ("cad_chon", "csv_diem"):
+        file_ten = ch.get("file")
+        if not file_ten:
+            raise bang_in.LoiNguon(f"be_mat_{nhan} dùng nguon={nguon} nhưng thiếu trường `file`.")
+        p_csv = Path(file_ten)
+        if not p_csv.is_absolute():
+            p_csv = (lot.input_dir / p_csv) if (lot.input_dir / p_csv).is_file() else (lot.root / p_csv)
+        if not p_csv.is_file():
+            raise bang_in.LoiNguon(f"Không thấy file điểm đã chọn từ CAD: {p_csv}")
+        import csv as _csv
+        diem_ds: list[dxfio.Diem] = []
+        with p_csv.open(encoding="utf-8-sig", newline="") as f:
+            for r in _csv.DictReader(f):
+                diem_ds.append(dxfio.Diem(r["id"], float(r["northing"]), float(r["easting"]), float(r["z"]),
+                                          r.get("code", ""), p_csv.name))
+        rel = str(p_csv.relative_to(lot.root)) if p_csv.is_relative_to(lot.root) else p_csv.name
+        return diem_ds, {"file": rel, "hash_sha256": bang_in.bam_sha256(p_csv),
+                         "layer": ch.get("layer", "CAD_CHON"), "so_diem": len(diem_ds)}
     raise bang_in.LoiNguon(f"be_mat_{nhan}.nguon = {nguon} chưa cài đặt "
-                           "(nguồn hợp lệ ở giai đoạn 1: dxf_layer, excel, csv).")
+                           "(nguồn hợp lệ ở giai đoạn 1: dxf_layer, excel, csv, cad_chon).")
 
 
 def _mo_ta_bang(nhan: str, kq: "bang_in.KetQuaBang") -> None:
@@ -69,17 +97,57 @@ def verb_nhap(lot: Lot, cfg: dict, preview: bool, xac_nhan: bool = False) -> int
     # Biên lô có thể do NGƯỜI khai trong lot.yaml là một đa tuyến cụ thể của bản vẽ nhà thầu (chưa gán layer SN-)
     # — agent không được ghi layer vào 00_input (RULES 3), nên người chỉ ra đúng đa tuyến nào, lõi đọc nguyên trạng.
     bien_cfg = cfg.get("bien_lo")
-    can_dxf = any(cfg[f"be_mat_{n}"].get("nguon", "dxf_layer") == "dxf_layer" for n in ("moc", "do"))
+    can_dxf = any(cfg[f"be_mat_{n}"].get("nguon", "dxf_layer") == "dxf_layer"
+                  and not cfg[f"be_mat_{n}"].get("file") for n in ("moc", "do"))
     d = (dxfio.doc(dxfs[0], cung_tron_sai_so_mm=ng["cung_tron_sai_so_mm"])
          if dxfs and (can_dxf or not bien_cfg) else None)
-    bien_khai = None
+    bien_khai: list[dxfio.DuongBao] | None = None
+    bien_nguon_info: dict | None = None
     if bien_cfg:
-        if bien_cfg.get("nguon") != "dxf_polyline" or not bien_cfg.get("file"):
-            raise bang_in.LoiNguon("lot.yaml: bien_lo cần {nguon: dxf_polyline, file, layer, so_dinh}")
-        bien_khai = dxfio.doc_bien_polyline(lot.input_dir / bien_cfg["file"], str(bien_cfg.get("layer", "0")),
-                                            int(bien_cfg["so_dinh"]), ng["cung_tron_sai_so_mm"])
-        print(f"Biên  do người khai: đa tuyến {bien_cfg['so_dinh']} đỉnh, layer «{bien_cfg.get('layer', '0')}» "
-              f"của {bien_cfg['file']}: {bien_khai.dien_tich_m2:,.3f} m² (khép kín={bien_khai.khep_kin})")
+        b_nguon = bien_cfg.get("nguon", "dxf_polyline")
+        if b_nguon == "dxf_polyline" and bien_cfg.get("file"):
+            bk = dxfio.doc_bien_polyline(lot.input_dir / bien_cfg["file"], str(bien_cfg.get("layer", "0")),
+                                         int(bien_cfg["so_dinh"]), ng["cung_tron_sai_so_mm"])
+            bien_khai = [bk]
+            bien_nguon_info = {"file": bien_cfg["file"],
+                               "hash_sha256": bang_in.bam_sha256(lot.input_dir / bien_cfg["file"]),
+                               "layer": str(bien_cfg.get("layer", "0")), "so_dinh": int(bien_cfg["so_dinh"])}
+            print(f"Biên  do người khai: đa tuyến {bien_cfg['so_dinh']} đỉnh, layer «{bien_cfg.get('layer', '0')}» "
+                  f"của {bien_cfg['file']}: {bk.dien_tich_m2:,.3f} m² (khép kín={bk.khep_kin})")
+        elif b_nguon in ("cad_chon", "json") and bien_cfg.get("file"):
+            p_bien = Path(bien_cfg["file"])
+            if not p_bien.is_absolute():
+                p_bien = (lot.input_dir / p_bien) if (lot.input_dir / p_bien).is_file() else (lot.root / p_bien)
+            bien_khai, h_bien = dxfio.doc_bien_json(p_bien, ng["cung_tron_sai_so_mm"])
+            bien_nguon_info = {"file": str(p_bien.relative_to(lot.root)) if p_bien.is_relative_to(lot.root) else p_bien.name,
+                               "hash_sha256": h_bien, "nguon": "cad_chon", "so_vong": len(bien_khai)}
+            print(f"Biên  do người chọn trong AutoCAD ({p_bien.name}): {len(bien_khai)} vòng, "
+                  f"tổng diện tích {sum(b.dien_tich_m2 for b in bien_khai):,.3f} m²")
+        else:
+            raise bang_in.LoiNguon("lot.yaml: bien_lo cần {nguon: dxf_polyline, file, layer, so_dinh} hoặc {nguon: cad_chon, file}")
+
+    loai_tru_khai: list[dxfio.DuongBao] | None = None
+    lt_cfg = cfg.get("loai_tru")
+    if isinstance(lt_cfg, dict) and lt_cfg.get("nguon") in ("cad_chon", "json") and lt_cfg.get("file"):
+        p_lt = Path(lt_cfg["file"])
+        if not p_lt.is_absolute():
+            p_lt = (lot.input_dir / p_lt) if (lot.input_dir / p_lt).is_file() else (lot.root / p_lt)
+        if p_lt.is_file():
+            loai_tru_khai, _ = dxfio.doc_bien_json(p_lt, ng["cung_tron_sai_so_mm"])
+
+    dut_gay_khai: list[list[tuple[float, float, float]]] | None = None
+    dut_gay_info: dict | None = None
+    dg_cfg = cfg.get("dut_gay")
+    if isinstance(dg_cfg, dict) and dg_cfg.get("file"):
+        dg_nguon = dg_cfg.get("nguon", "cad_chon")
+        p_dg = Path(dg_cfg["file"])
+        if not p_dg.is_absolute():
+            p_dg = (lot.input_dir / p_dg) if (lot.input_dir / p_dg).is_file() else (lot.root / p_dg)
+        if dg_nguon in ("cad_chon", "json"):
+            dut_gay_khai, h_dg = dxfio.doc_dut_gay_json(p_dg)
+            dut_gay_info = {"file": str(p_dg.relative_to(lot.root)) if p_dg.is_relative_to(lot.root) else p_dg.name,
+                            "hash_sha256": h_dg, "nguon": "cad_chon", "so_duong": len(dut_gay_khai)}
+            print(f"Đứt gãy do người chọn trong AutoCAD ({p_dg.name}): {len(dut_gay_khai)} đường breakline")
 
     if d is not None:
         print(f"DXF   {d.dxf.name}  ({d.acad})")
@@ -92,14 +160,24 @@ def verb_nhap(lot: Lot, cfg: dict, preview: bool, xac_nhan: bool = False) -> int
 
     diem_moc, bang_moc = _nap_be_mat(cfg, "moc", d, preview, xac_nhan, lot)
     diem_do, bang_do = _nap_be_mat(cfg, "do", d, preview, xac_nhan, lot)
+    bo_diem = [str(x) for x in (cfg.get("bo_diem") or [])]
+    if bo_diem:
+        bo_set = set(bo_diem)
+        truoc_m, truoc_d = len(diem_moc), len(diem_do)
+        diem_moc = [p for p in diem_moc if p.id not in bo_set]
+        diem_do = [p for p in diem_do if p.id not in bo_set]
+        print(f"Bỏ    theo lot.yaml:bo_diem: mốc -{truoc_m - len(diem_moc)}, đo -{truoc_d - len(diem_do)} điểm")
     for nhan, kq in (("mốc", bang_moc), ("đo", bang_do)):
-        if kq is not None:
+        if isinstance(kq, bang_in.KetQuaBang):
             _mo_ta_bang(nhan, kq)
+        elif isinstance(kq, dict):
+            print(f"DXF   {nhan}: {kq['file']}  layer «{kq['layer']}»  đọc {kq['so_diem']} điểm")
     print(f"Điểm  mốc {len(diem_moc)}   đo {len(diem_do)}   "
           f"(đọc xong trong {time.perf_counter() - t0:.2f} s)")
 
     hd = cfg.get("he_toa_do", "")
-    phat_hien = [p for kq in (bang_moc, bang_do) if kq for p in kq.phat_hien]
+    phat_hien = [p for kq in (bang_moc, bang_do)
+                 if isinstance(kq, bang_in.KetQuaBang) for p in kq.phat_hien]
     phat_hien += qc.kiem_tra(diem_moc, ng, "bề mặt mốc", hd) + \
                  qc.kiem_tra(diem_do, ng, "bề mặt đo", hd)
     if d is None and bien_khai is None:
@@ -108,7 +186,7 @@ def verb_nhap(lot: Lot, cfg: dict, preview: bool, xac_nhan: bool = False) -> int
                                    "— các verb `mat` và `lo` sẽ không chạy được.",
                           "lua_chon": ["(a) xuất DXF biên lô từ AutoCAD vào 00_input/"]})
     else:
-        for b in (d.bien_lo if d else []) + ([bien_khai] if bien_khai else []):
+        for b in (d.bien_lo if d else []) + (bien_khai or []):
             if not b.khep_kin:
                 phat_hien.append({"loai": "bien_khong_khep", "muc": "chan",
                                   "mo_ta": "Biên lô không khép kín — mọi phép tính diện tích sai dấu"})
@@ -126,17 +204,21 @@ def verb_nhap(lot: Lot, cfg: dict, preview: bool, xac_nhan: bool = False) -> int
 
     lot.ensure()
     nguon_in = {"dxf": ({"file": d.dxf.name, "hash_sha256": d.hash_sha256} if d else None)}
-    if bien_khai is not None:
-        nguon_in["bien_lo"] = {"file": bien_cfg["file"],
-                               "hash_sha256": bang_in.bam_sha256(lot.input_dir / bien_cfg["file"]),
-                               "layer": str(bien_cfg.get("layer", "0")), "so_dinh": int(bien_cfg["so_dinh"])}
+    if bien_nguon_info is not None:
+        nguon_in["bien_lo"] = bien_nguon_info
+    if dut_gay_info is not None:
+        nguon_in["dut_gay"] = dut_gay_info
     for nhan, kq in (("moc", bang_moc), ("do", bang_do)):
-        if kq is not None:
+        if isinstance(kq, bang_in.KetQuaBang):
+            rel_f = str(kq.file.relative_to(lot.root)) if kq.file.is_relative_to(lot.root) else kq.file.name
             nguon_in[f"be_mat_{nhan}"] = {
-                "file": kq.file.name, "hash_sha256": kq.hash_sha256, "sheet": kq.sheet,
+                "file": kq.file.name if kq.file.parent == lot.input_dir else rel_f,
+                "hash_sha256": kq.hash_sha256, "sheet": kq.sheet,
                 "hang_tieu_de": kq.hang_tieu_de, "anh_xa_cot": kq.anh_xa,
                 "nguon_anh_xa": kq.nguon_anh_xa, "dau_van_tay": kq.dau_van_tay,
                 "so_diem": len(kq.diem), "so_dong_hong": kq.so_dong_hong}
+        elif isinstance(kq, dict):
+            nguon_in[f"be_mat_{nhan}"] = kq
     hash_dau_vao = hashlib.sha256("|".join(sorted(
         v["hash_sha256"] for v in nguon_in.values() if v)).encode()).hexdigest()
     sinh_tu = {"nguon": nguon_in, "hash_dau_vao": hash_dau_vao,
@@ -145,7 +227,11 @@ def verb_nhap(lot: Lot, cfg: dict, preview: bool, xac_nhan: bool = False) -> int
     io_out.ghi_points(lot, "points_do.csv", diem_do)
     dut_gay, bien_lo, loai_tru = (d.dut_gay, d.bien_lo, d.loai_tru) if d else ([], [], [])
     if bien_khai is not None:
-        bien_lo = [bien_khai]                        # biên do người khai thay cho layer SN-BIENLO
+        bien_lo = bien_khai                          # biên do người khai/chọn thay cho layer SN-BIENLO
+    if loai_tru_khai is not None:
+        loai_tru = loai_tru_khai
+    if dut_gay_khai is not None:
+        dut_gay = dut_gay_khai
     io_out.ghi_geojson(lot, "breaklines.geojson",
                        [io_out.feature_dut_gay(x) for x in dut_gay],
                        {**sinh_tu, "layer": "SN-DUTGAY"})

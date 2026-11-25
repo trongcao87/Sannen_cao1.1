@@ -290,3 +290,31 @@ def test_11000_diem_duoi_5_giay(tmp_path, capsys):
     # ở quy mô thật vẫn bắt đúng điểm cài: không bị chìm trong báo động giả
     assert any(p["loai"] == "cao_do_bat_thuong" and loi["cao_do_sai"]["id"] in p["mo_ta"] for p in ph)
     assert sum(p["loai"] == "cao_do_bat_thuong" for p in ph) <= 10
+
+
+def test_hai_file_dxf_rieng_voi_layer_tuy_chon(tmp_path):
+    """Mỗi bề mặt đọc từ một file DXF và layer riêng (vd layer 'point')."""
+    import ezdxf
+    lot = Lot(tmp_path)
+    lot.ensure()
+    for ten, z0 in (("tsl.dxf", 2.0), ("ssl.dxf", 3.5)):
+        doc = ezdxf.new("R2018")
+        msp = doc.modelspace()
+        for i in range(4):
+            msp.add_point((445000.0 + i * 10, 1113000.0 + (i % 2) * 10, z0 + i * 0.1),
+                          dxfattribs={"layer": "point"})
+        if ten == "ssl.dxf":
+            msp.add_lwpolyline([(444995, 1112995), (445035, 1112995), (445035, 1113015), (444995, 1113015)],
+                               close=True, dxfattribs={"layer": "0"})
+        doc.saveas(lot.input_dir / ten)
+    lot.lot_yaml.write_text(
+        "ma_lo: DXF-2\nten_lo: Hai DXF\ndot: 1\nhe_toa_do: VN-2000\ndon_vi: m\n"
+        "phuong_phap_chinh_thuc: luoi_o_vuong\n"
+        "be_mat_moc: {nguon: dxf_layer, file: tsl.dxf, layer: point}\n"
+        "be_mat_do:  {nguon: dxf_layer, file: ssl.dxf, layer: point}\n"
+        "bien_lo:    {nguon: dxf_polyline, file: ssl.dxf, layer: '0', so_dinh: 4}\n"
+        "luoi: {kich_thuoc_o_m: 10, goc_xoay_do: 0}\n", encoding="utf-8")
+    assert _chay(lot) in (0, 1)
+    q = _qc(lot)
+    assert q["nguon"]["be_mat_moc"]["file"] == "tsl.dxf" and q["nguon"]["be_mat_moc"]["so_diem"] == 4
+    assert q["nguon"]["be_mat_do"]["file"] == "ssl.dxf" and q["nguon"]["be_mat_do"]["so_diem"] == 4

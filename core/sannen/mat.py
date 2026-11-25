@@ -46,6 +46,8 @@ def kiem_hash_dau_vao(lot: Lot) -> dict:
         if not nguon:
             continue
         p = lot.input_dir / nguon["file"]
+        if not p.exists():
+            p = lot.root / nguon["file"]
         if not p.exists() or bam_sha256(p) != nguon["hash_sha256"]:
             raise DauVaoDaDoi(f"{nguon['file']} đã thay đổi hoặc mất kể từ lần `nhap` gần nhất "
                               "— chạy lại `nhap` rồi duyệt lại (RULES: nguồn sự thật là file trong 00_input).")

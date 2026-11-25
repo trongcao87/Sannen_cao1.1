@@ -49,6 +49,9 @@ namespace SanNen.Palette.Ui
             _menu.Items.Add("Chọn đối tượng nhóm", null, delegate { Chay(delegate { Chon(_cay.SelectedNode); }); });
 
             FlowLayoutPanel hang = HangNut(
+                Nut("Tạo/cập nhật MH (DD_DH)…", delegate { Bao(CadLenh.TaoMat() ?? "Mở hộp thoại Quản lý & khởi tạo mô hình địa hình (SN_TAOMAT)."); }),
+                Nut("Chọn Breakline…", delegate { Bao(CadLenh.ChonDutGay() ?? "Chọn đường Breakline trên bản vẽ (SN_CHONDUTGAY)."); }),
+                Nut("Chọn biên lô…", delegate { Bao(CadLenh.ChonBien() ?? "Chọn biên lô trên bản vẽ (SN_CHONBIEN)."); }),
                 Nut("Hiện tất cả SAN NỀN", delegate { HienTatCa(true); }),
                 Nut("Ẩn tất cả", delegate { HienTatCa(false); }),
                 Nut("Xem 3D", delegate { Bao(CadLenh.Xem3D() ?? "Xem 3D bằng C# (SN_TIN3D_NET) — chọn bề mặt trên dòng lệnh AutoCAD."); }));

@@ -61,6 +61,40 @@ def goi_verb(verb: str, args: dict) -> tuple[str, bool]:
     if verb == "mat" and args.get("be_mat"):
         argv += ["--be-mat", args["be_mat"]]
     if verb == "luoi":
+        from . import luoi_sua, dxfio
+        tu_dxf = args.get("tu_file_dxf")
+        cot_arg = args.get("cot")
+        hang_arg = args.get("hang")
+        if tu_dxf or cot_arg or hang_arg:
+            st_cu = luoi_sua.trang_thai(lot) if (lot.process_dir / "grid.json").exists() else {
+                "kich_thuoc_o_m": float(args.get("o") or 20.0),
+                "goc_xoay_do": 0.0, "goc_luoi": [0.0, 0.0], "cot_m": [20.0], "hang_m": [20.0],
+                "ngoai_suy_m": float(args.get("ngoai_suy") or 0.0), "ngoai_suy_kieu": "gan_nhat"
+            }
+            if tu_dxf:
+                kq_dxf = dxfio.doc_luoi_dxf(Path(tu_dxf), args.get("layer_luoi"))
+                st_moi = {**st_cu, "kich_thuoc_o_m": float(args.get("o") or kq_dxf["kich_thuoc_o_m"]),
+                          "goc_xoay_do": float(args.get("goc") if args.get("goc") is not None else kq_dxf["goc_xoay_do"]),
+                          "goc_luoi": [float(x) for x in args["goc_luoi"].split(",")] if args.get("goc_luoi") else kq_dxf["goc_luoi"],
+                          "cot_m": luoi_sua.phan_tich(cot_arg) if cot_arg else kq_dxf["cot_m"],
+                          "hang_m": luoi_sua.phan_tich(hang_arg) if hang_arg else kq_dxf["hang_m"]}
+            else:
+                kw_dat: dict = {}
+                if cot_arg:
+                    kw_dat["cot"] = cot_arg
+                if hang_arg:
+                    kw_dat["hang"] = hang_arg
+                if args.get("o") is not None:
+                    kw_dat["o"] = float(args["o"])
+                if args.get("goc") is not None and str(args["goc"]) != "auto":
+                    kw_dat["goc_do"] = float(args["goc"])
+                if args.get("goc_luoi"):
+                    kw_dat["goc_luoi"] = [float(x) for x in str(args["goc_luoi"]).split(",")]
+                if args.get("ngoai_suy") is not None:
+                    kw_dat["ngoai_suy_m"] = float(args["ngoai_suy"])
+                st_moi = luoi_sua.ap_dung(st_cu, "dat", **kw_dat)
+            if not preview:
+                luoi_sua.ghi_tuy_chinh(lot, st_moi, args.get("ly_do") or "Đặt/Import lưới từ cửa sổ Chat qua MCP")
         for k, c in (("o", "--o"), ("goc", "--goc"), ("goc_luoi", "--goc-luoi"), ("ngoai_suy", "--ngoai-suy")):
             if args.get(k) is not None:
                 argv += [c, str(args[k])]
@@ -108,6 +142,8 @@ def trang_thai(args: dict) -> tuple[str, bool]:
         cong[str(n)] = {"da_duyet": ok, "ly_do_chua": "" if ok else ly, "viec_chan": len(viec_chan(lot, n))}
     tiep = next((v for v in ("nhap", "mat", "lo", "luoi", "tinh", "xuat") if not buoc[v]), None)
     out = {"lot": lot.root.name, "buoc_da_chay": buoc, "cong": cong, "buoc_ke_tiep": tiep,
+           "be_mat_da_khoi_tao": bool(buoc["mat"]),
+           "san_sang_agent_ra_soat": bool(buoc["mat"] and buoc["lo"]),
            "so_hieu_chinh": len(json.loads((ps / "grid_adjusted.json").read_text(encoding="utf-8"))["ghi_de"])
            if (ps / "grid_adjusted.json").exists() else 0}
     if buoc["tinh"]:
@@ -121,6 +157,133 @@ def doc_viec(args: dict) -> tuple[str, bool]:
     lot = _lot(args)
     p = lot.process_dir / "viec_can_lam.md"
     return (p.read_text(encoding="utf-8"), False) if p.exists() else ("Chưa có viec_can_lam.md.", False)
+
+
+def thong_tin_mcp(args: dict) -> tuple[str, bool]:
+    """Đọc toàn bộ số liệu có cấu trúc của lô (chỉ ĐỌC, không tính, không ghi)."""
+    from . import thong_tin as _tt
+    lot = _lot(args)
+    tt = _tt.thong_tin(lot)
+    return json.dumps({**tt, "nhom": _tt.dong_hien_thi(tt), "bien_dong": _tt.dong_bien(tt)},
+                      ensure_ascii=False, indent=1), False
+
+
+def canh_bao_mcp(args: dict) -> tuple[str, bool]:
+    """Gom phát hiện QC (qc_*.json) và cảnh báo kết quả cũ theo mức độ (chặn → cảnh báo → thông tin)."""
+    from . import thong_tin as _tt
+    lot = _lot(args)
+    thu_tu = {"chan": 0, "canh_bao": 1, "thong_tin": 2}
+    ds = []
+    for ten in ("qc_input.json", "qc_surface.json", "qc_lo.json", "qc_luoi.json", "qc_volume.json"):
+        p = lot.process_dir / ten
+        if not p.exists():
+            continue
+        for f in io_out.doc_json(p).get("phat_hien", []):
+            vt = f.get("vi_tri") or [None, None]
+            ds.append({"ma": f.get("ma"), "muc": f.get("muc"), "loai": f.get("loai"),
+                       "mo_ta": f.get("mo_ta"), "e": vt[0], "n": vt[1], "nguon": ten})
+    ds.sort(key=lambda x: thu_tu.get(x["muc"], 3))
+    tt = _tt.thong_tin(lot)
+    return json.dumps({"lot": lot.root.name, "canh_bao_cu": tt["canh_bao_cu"], "phat_hien": ds},
+                      ensure_ascii=False, indent=1), False
+
+
+def ra_soat_phuong_an_mcp(args: dict) -> tuple[str, bool]:
+    """Agent chỉ chạy bước rà soát, chuẩn hóa, và tạo nhiều phương án (--sweep) KHI người dùng đã khởi tạo bề mặt thành công."""
+    lot = _lot(args)
+    ps = lot.process_dir
+    preview = args.get("preview", True)
+    if not ((ps / "surface_moc.json").exists() and (ps / "surface_do.json").exists()):
+        return ("TỪ CHỐI: Người dùng CHƯA khởi tạo xong hai bề mặt (surface_moc.json, surface_do.json). "
+                "Theo quy trình thủ công: người dùng phải tự chọn dữ liệu từ Excel hoặc AutoCAD, chọn đường Breakline, "
+                "chọn biên lô bằng nút lệnh trong AutoCAD (SN_TAOMAT / DD_DH) để khởi tạo bề mặt thành công trước; "
+                "sau đó Agent mới chạy rà soát, chuẩn hóa và tạo nhiều phương án."), True
+    if not (ps / "boundary.geojson").exists():
+        return ("TỪ CHỐI: Chưa có biên lô (boundary.geojson). Người dùng cần chọn biên lô bằng nút lệnh bên AutoCAD "
+                "(SN_TAOMAT hoặc SN_CHONBIEN) trước khi Agent chạy rà soát và tạo phương án."), True
+
+    log_buoc: list[str] = []
+    # 1. Chuẩn hóa biên lô nếu chưa có lo.json
+    if not (ps / "lo.json").exists():
+        ma_lo, ra_lo = _chay_cli(["lo", "--lot", str(lot.root)] + (["--preview"] if preview else []))
+        log_buoc.append(f"── CHUẨN HÓA BIÊN LÔ (mã {ma_lo}) ──\n{ra_lo.strip()}")
+        if ma_lo >= 2:
+            return "\n\n".join(log_buoc), True
+    else:
+        lo_d = io_out.doc_json(ps / "lo.json")
+        log_buoc.append(f"── BIÊN LÔ ĐÃ CHUẨN HÓA ──\nDiện tích hiệu dụng: {lo_d.get('tong', {}).get('dt_hieu_dung_m2', 0):,.3f} m²")
+
+    # 2. Rà soát QC bề mặt + dữ liệu + biên lô
+    phat_hien = []
+    for ten in ("qc_input.json", "qc_surface.json", "qc_lo.json"):
+        p = ps / ten
+        if p.exists():
+            for f in io_out.doc_json(p).get("phat_hien", []):
+                if f.get("muc") != "thong_tin":
+                    phat_hien.append(f"[{f.get('muc')}] {f.get('ma')}: {f.get('mo_ta')}")
+    log_buoc.append("── RÀ SOÁT CHẤT LƯỢNG BỀ MẶT & BIÊN LÔ ──\n" +
+                    ("\n".join(phat_hien) if phat_hien else "Không có cảnh báo hay việc chặn ở bề mặt và biên lô."))
+
+    # 3. Đặt lưới (nếu chưa có grid.json hoặc đang chạy chính thức sau khi cổng 2 đã duyệt)
+    if not preview:
+        ok_c2, ly_c2 = kiem_cong(lot, "tinh", False)
+        if not ok_c2:
+            return "\n\n".join(log_buoc) + "\n\n" + thong_bao_tu_choi("tinh", ly_c2), True
+        if not (ps / "grid.json").exists():
+            ma_lu, ra_lu = _chay_cli(["luoi", "--lot", str(lot.root)])
+            log_buoc.append(f"── ĐẶT LƯỚI Ô VUÔNG (mã {ma_lu}) ──\n{ra_lu.strip()}")
+            if ma_lu >= 2:
+                return "\n\n".join(log_buoc), True
+        ma_ti, ra_ti = _chay_cli(["tinh", "--lot", str(lot.root), "--sweep"])
+        log_buoc.append(f"── TÍNH & QUÉT NHIỀU PHƯƠNG ÁN (--sweep, mã {ma_ti}) ──\n{ra_ti.strip()}")
+        return "\n\n".join(log_buoc), ma_ti >= 2
+
+    # Chế độ preview: nếu chưa có grid.json thì báo trạng thái rà soát bề mặt/biên lô để người dùng tạo lưới hoặc duyệt cổng 2
+    if (ps / "grid.json").exists():
+        ma_ti, ra_ti = _chay_cli(["tinh", "--lot", str(lot.root), "--sweep", "--preview"])
+        log_buoc.append(f"── XEM TRƯỚC TÍNH & QUÉT NHIỀU PHƯƠNG ÁN (--sweep, mã {ma_ti}) ──\n{ra_ti.strip()}")
+    else:
+        log_buoc.append("── LƯỚI Ô VUÔNG ──\nChưa có grid.json — người dùng có thể mở hộp thoại Tạo lưới (SN_LUOI / DD_TAOLUOI) "
+                        "chọn biên lô để tự tính số cột/hàng, hoặc duyệt Cổng 2 để chạy bước đặt lưới và quét ma trận phương án (--sweep).")
+    return "\n\n".join(log_buoc), False
+
+
+def ve_mcp(args: dict) -> tuple[str, bool]:
+    """Dựng kế hoạch vẽ JSON theo ý định (ve | tin3d | mat-cat | bang). Mặc định preview=true không ghi file."""
+    import sys
+    lot = _lot(args)
+    preview = args.get("preview", True)
+    che_do = args.get("che_do") or "ve"
+    cad_dir = Path(__file__).resolve().parents[2] / "cad"
+    if str(cad_dir) not in sys.path and cad_dir.is_dir():
+        sys.path.insert(0, str(cad_dir))
+    from sannen_cad import ke_hoach as _kh
+    try:
+        if che_do == "ve":
+            lop = args.get("lop")
+            if isinstance(lop, str):
+                lop = [x.strip() for x in lop.split(",") if x.strip()]
+            kh = _kh.tao_ke_hoach(lot.root, lop, args.get("dang") or "polyface")
+        elif che_do == "tin3d":
+            kh = _kh.tao_ke_hoach_tin3d(lot.root, args.get("be_mat") or "ca-hai", args.get("dang") or "polyface")
+        elif che_do == "mat-cat":
+            ten = args.get("ten") or "MC1"
+            kh = _kh.tao_ke_hoach_mat_cat(lot.root, ten, ty_le=float(args.get("ty_le_dung") or 5.0))
+        elif che_do == "bang":
+            gv = args.get("goc_ve") or [0.0, 0.0]
+            kh = _kh.tao_ke_hoach_bang(lot.root, args.get("loai") or "o", (float(gv[0]), float(gv[1])))
+        else:
+            return f"che_do phải là ve, tin3d, mat-cat hoặc bang (nhận '{che_do}').", True
+    except (FileNotFoundError, ValueError) as e:
+        return str(e), True
+    out = {"che_do": che_do, "preview": preview, "tom_tat": kh["tom_tat"],
+           "lop": [l["ten"] for l in kh["lop"]], "xoa": kh["xoa"]}
+    if not preview:
+        dest = Path(args["ke_hoach"]) if args.get("ke_hoach") else (lot.output_dir / "ke_hoach_ve.json")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(_kh.ghi_json(kh))
+        out["ke_hoach"] = str(dest)
+    return json.dumps(out, ensure_ascii=False, indent=1), False
 
 
 def _p(mo_ta, kieu="string", **kw):
@@ -146,9 +309,15 @@ def danh_sach_cong_cu() -> list[CongCu]:
         verb("mat", "Dựng TIN có ràng buộc đứt gãy cho hai bề mặt, QC tam giác. Cần cổng 1.",
              {"be_mat": _p("moc | do | ca-hai", enum=["moc", "do", "ca-hai"])}),
         verb("lo", "Chuẩn hóa biên lô và vùng loại trừ, đối chiếu AREA. Cần cổng 1."),
-        verb("luoi", "Đặt lưới ô vuông, nội suy cao độ đỉnh. Cần cổng 2. Kích thước ô/góc/gốc theo hồ sơ, KHÔNG tự chọn.",
+        verb("luoi", "Đặt lưới ô vuông, nội suy cao độ đỉnh (hoặc import lưới từ file CAD/DXF, đẩy cấu hình cột/hàng từ Chat sang AutoCAD). "
+             "Cần cổng 2. Kích thước ô/góc/gốc theo hồ sơ, KHÔNG tự chọn.",
              {"o": _p("kích thước ô (m)", "number"), "goc": _p("góc xoay độ hoặc 'auto'"),
               "goc_luoi": _p("gốc lưới 'E,N' VN-2000"),
+              "cot": _p("chiều rộng các cột dạng Số×KT (vd '7x20,2x15') đẩy từ Chat sang CAD"),
+              "hang": _p("chiều cao các hàng dạng Số×KT (vd '5x20') đẩy từ Chat sang CAD"),
+              "tu_file_dxf": _p("đường dẫn file .dxf hoặc .json để import lưới ô vuông vào lô"),
+              "layer_luoi": _p("tên layer chứa lưới trong file DXF (tuỳ chọn)"),
+              "ly_do": _p("lý do đặt/import lưới từ Chat (ghi vào decisions.md)"),
               "ngoai_suy": _p("CHỈ khi NGƯỜI đã chấp nhận: ngoại suy cao độ đỉnh ngoài vùng đo ≤ M mét (mặc định 0 = cấm, RULES 8)", "number")}),
         verb("hieuchinh", "Áp cao độ một đỉnh lưới do NGƯỜI chỉ định (tự tính lại chênh cao). Cần cổng 2.",
              {"dinh": _p("mã đỉnh, vd D03-05"), "z": _p("cao độ mới (m)", "number"),
@@ -166,6 +335,22 @@ def danh_sach_cong_cu() -> list[CongCu]:
         CongCu("sannen_ghi_quyet_dinh", "Ghi câu trả lời của người cho một việc (vd V-01 → a) vào 90_log/decisions.md.",
                schema({"lot": LOT, "ma_viec": _p("vd V-01"), "lua_chon": _p("vd a"), "ghi_chu": _p("tuỳ chọn")},
                       ["lot", "ma_viec", "lua_chon"]), ghi_quyet_dinh),
+        CongCu("sannen_thong_tin", "Đọc toàn bộ số liệu có cấu trúc của lô (TIN, biên, lưới, khối lượng, mặt cắt). Chỉ ĐỌC.",
+               schema({"lot": LOT}, ["lot"]), thong_tin_mcp),
+        CongCu("sannen_canh_bao", "Gom tất cả phát hiện QC (qc_*.json) theo mức độ (chặn → cảnh báo → thông tin) và cảnh báo kết quả cũ.",
+               schema({"lot": LOT}, ["lot"]), canh_bao_mcp),
+        CongCu("sannen_ra_soat_phuong_an",
+               "Agent chạy bước rà soát QC, chuẩn hóa biên lô và quét ma trận nhiều phương án (--sweep) SAU KHI người dùng "
+               "đã khởi tạo bề mặt (MHTN + MHTK) thành công từ AutoCAD/Excel. Nếu bề mặt chưa khởi tạo sẽ từ chối.",
+               schema({"lot": LOT, "preview": PREVIEW}, ["lot"]), ra_soat_phuong_an_mcp),
+        CongCu("sannen_ve", "Dựng kế hoạch vẽ JSON theo ý định (ve | tin3d | mat-cat | bang) cho AutoCAD DrawEngine. Mặc định preview=true.",
+               schema({"lot": LOT, "preview": PREVIEW,
+                       "che_do": _p("ve (mặc định) | tin3d | mat-cat | bang", enum=["ve", "tin3d", "mat-cat", "bang"]),
+                       "lop": _p("danh sách nhóm cần vẽ: luoi,nhan,o,ranh,3d,bang", "array"),
+                       "be_mat": _p("moc | do | ca-hai (cho tin3d)", enum=["moc", "do", "ca-hai"]),
+                       "ten": _p("tên mặt cắt (cho mat-cat)"),
+                       "loai": _p("tong | tong-hop | o (cho bang)", enum=["tong", "tong-hop", "o"]),
+                       "ke_hoach": _p("đường dẫn file JSON đầu ra khi preview=false")}, ["lot"]), ve_mcp),
     ]
 
 

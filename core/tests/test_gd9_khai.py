@@ -130,3 +130,69 @@ def test_xa_hon_ban_kinh_thi_van_thieu(tmp_path):
     cli.main(["luoi", "--lot", str(l.root), "--ngoai-suy", "3", "--ngoai-suy-kieu", "diem_gan_nhat"])
     g = json.loads((l.process_dir / "grid.json").read_text(encoding="utf-8"))
     assert any(o["thieu_du_lieu"] for o in g["o"])
+
+
+def test_khoi_tao_be_mat_thu_cong_tu_cad_va_excel(tmp_path):
+    """Người dùng tự chọn dữ liệu điểm (từ CAD/Excel), chọn đường Breakline, chọn biên lô bằng nút lệnh CAD
+    → khoi-tao-be-mat ghi nguon_tuy_chinh.yaml, chạy nhap + mat + lo thành công."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "cad"))
+    from sannen_cad import cau_noi as CN
+
+    l = Lot(tmp_path / "lot_thu_cong")
+    l.ensure()
+    l.lot_yaml.write_text("""ma_lo: TC-01
+dot: 1
+he_toa_do: VN-2000
+phuong_phap_chinh_thuc: luoi_o_vuong
+be_mat_moc: {nguon: dxf_layer, layer: SN-DIEM-MOC}
+be_mat_do:  {nguon: dxf_layer, layer: SN-DIEM-DO}
+luoi: {kich_thuoc_o_m: 20, goc_xoay_do: 0}
+""", encoding="utf-8")
+
+    # 1. Tạo dữ liệu MHTN từ Excel (người dùng chọn file Excel)
+    xls_moc = tmp_path / "mhtn_goc.xlsx"
+    make_fixture.tao_xlsx(xls_moc, 250, seed=5, cai_loi=False, z0=10.0)
+
+    # 2. Tạo dữ liệu MHTK từ đối tượng người dùng quét chọn trên AutoCAD (CSV điểm trích từ Point/Block/Text/3DPolyline)
+    csv_do = tmp_path / "mhtk_cad.csv"
+    dong_do = ["id,northing,easting,z,code"]
+    for i in range(12):
+        for j in range(10):
+            e, n = E0 - 10 + i * 12.0, N0 - 10 + j * 10.0
+            dong_do.append(f"DO-{i}-{j},{n:.4f},{e:.4f},{12.5 + 0.01 * i:.4f},pline3d")
+    csv_do.write_text("\n".join(dong_do) + "\n", encoding="utf-8")
+
+    # 3. Tạo đường Breakline (đứt gãy 3D) do người dùng chọn trên AutoCAD
+    dg_json = tmp_path / "dut_gay_cad.json"
+    dg_json.write_text(json.dumps({
+        "dut_gay": [
+            [[E0, N0 + 20, 12.5], [E0 + 50, N0 + 20, 12.6], [E0 + 100, N0 + 20, 12.7]]
+        ]
+    }), encoding="utf-8")
+
+    # 4. Tạo biên lô do người dùng chọn bằng nút lệnh trên AutoCAD
+    bien_json = tmp_path / "bien_lo_cad.json"
+    bien_json.write_text(json.dumps({
+        "vong": [
+            {"khep_kin": True, "dinh": [[E0, N0, 0.0], [E0 + 100, N0, 0.0], [E0 + 100, N0 + 60, 0.0], [E0, N0 + 60, 0.0]]}
+        ]
+    }), encoding="utf-8")
+
+    ra = tmp_path / "kq.json"
+    assert CN.main([
+        "khoi-tao-be-mat", "--lot", str(l.root), "--json", "--ra", str(ra),
+        "--nguon-moc", "excel", "--file-moc", str(xls_moc),
+        "--nguon-do", "cad_chon", "--file-do", str(csv_do),
+        "--file-dut-gay", str(dg_json),
+        "--file-bien-lo", str(bien_json),
+        "--xac-nhan-anh-xa"
+    ]) == 0
+    d = json.loads(ra.read_text(encoding="utf-8"))
+    assert d["ok"] is True, d["thong_bao"]
+    assert (l.root / "nguon_tuy_chinh.yaml").exists()
+    assert (l.process_dir / "surface_moc.json").exists() and (l.process_dir / "surface_do.json").exists()
+    assert (l.process_dir / "lo.json").exists()
+    lo_d = json.loads((l.process_dir / "lo.json").read_text(encoding="utf-8"))
+    assert lo_d["tong"]["dt_hieu_dung_m2"] == pytest.approx(6000.0)
+    sf_do = json.loads((l.process_dir / "surface_do.json").read_text(encoding="utf-8"))
+    assert sf_do["thong_ke"]["so_dut_gay"] == 1 and sf_do["thong_ke"]["so_doan_ep"] >= 2

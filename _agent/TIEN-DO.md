@@ -10,12 +10,13 @@ Cập nhật lần cuối: 2026-11-24 (sau bước 2 lộ trình, commit `c44795
 
 | Hạng mục | Trạng thái |
 |---|---|
-| Lõi Python (nhập, mặt TIN, biên lô, lưới, tính, xuất, MCP lõi, cổng duyệt ở CLI) | ✅ chạy trên lô thật 01-CGP |
-| Test | **302 pass, 1 skip** (`cd core; python -m pytest -q`, ≈ 5 phút) |
-| Palette C# 6 tab (`SN_PALETTE`) | ✅ build, nạp, hiển thị cây QL ĐH và tab Khối lượng đúng trên AutoCAD thật; các tab Biên lô, Lưới, Mặt cắt, Cảnh báo, ô tích Hiện/Ẩn, chuột phải, dock thả nổi **chưa thử** |
-| DrawEngine C# (`SanNenDraw.dll`: `SN_VE_NET`, `SN_XOA_NET`, `SN_TIN3D_NET`) | ✅ headless đầy đủ; trên GUI mới thử `SN_TIN3D` → `SN_TIN3D_NET` (164 ms, đúng); `SN_VE_NET`, `SN_XOA_NET` chưa thử trên GUI |
-| LISP/DCL (`cad/lisp/sannen.lsp`, `sannen.dcl`) | 🟡 vẫn là đường chính cho SN_LUOI, SN_MATCAT, SN_SUADINH, SN_DONGBO, SN_DUYET, SN_QL…; tự chuyển sang `_NET` khi có DLL |
-| Bước tiếp theo | **Bước 3** (mục 4 bên dưới) |
+| Lõi Python (nhập, mặt TIN, biên lô, lưới, tính, xuất, MCP lõi, cổng duyệt ở CLI) | ✅ chạy trên lô thật 01-CGP + mở rộng nhận nguồn chọn thủ công từ CAD/Excel (`nguon_tuy_chinh.yaml`, `khoi-tao-be-mat`) |
+| Test | **304 pass, 1 skip** (`cd core; python -m pytest -q`) |
+| Palette C# 6 tab (`SN_PALETTE`) | ✅ build, nạp, hiển thị cây QL ĐH, Biên lô, Lưới, Mặt cắt, Khối lượng, Cảnh báo; có nút khởi tạo bề mặt (`DD_DH`), chọn Breakline, chọn Biên lô, Tạo lưới |
+| DrawEngine C# (`SanNenDraw.dll`: `SN_VE_NET`, `SN_XOA_NET`, `SN_TIN3D_NET`, `SN_MATCAT_NET`, `SN_XOAMATCAT_NET`, `SN_BANG_NET`, `SN_LUOI_NET`, `SN_DICHLUOI_NET`, `SN_XOAYLUOI_NET`, `SN_LUOI_BO_NET`, `SN_SUADINH_NET`, `SN_DONGBO_NET`, `SN_DUYET_NET`, `SN_TAOMAT_NET`, `SN_CHONBIEN_NET`, `SN_CHONDUTGAY_NET`) | ✅ Bước 3 hoàn thành 100% lệnh C# và biên dịch sạch; script build sửa tên assembly chuẩn `SanNenDraw` + `AssemblyResolve` |
+| MCP (`core/sannen/mcp_server.py`) | ✅ Đã gộp `sannen_thong_tin`, `sannen_canh_bao`, `sannen_ve` + thêm `sannen_ra_soat_phuong_an` (chỉ chạy rà soát/chuẩn hóa/quét phương án khi người dùng đã khởi tạo bề mặt thành công) |
+| LISP/DCL (`cad/lisp/sannen.lsp`, `sannen.dcl`) | ✅ Đã dọn và tự động định tuyến sang lệnh `*_NET` của C# khi có `SanNenDraw.dll` (tự xử lý `FILEDIA=0` khi `NETLOAD`), giữ tương thích 100% với bộ test GĐ11–17 |
+| Bước tiếp theo | **Kiểm tra GUI Bước 3** rồi sang **Bước 4** (gỡ LISP/DCL) |
 
 Lô 01-CGP (đợt 1): lưới 7×5 ô 20 m, 23 ô trong lô; **số nộp** đào 10.985 m³, đắp 5.576,452 m³; **số kiểm** (lăng trụ)
 đào 68,299 m³, đắp 7.812,175 m³; diện tích ô = diện tích lô 4.974,2839 m². Cổng 2 và 3 đã duyệt ngày 2026-11-24 12:45

@@ -152,5 +152,41 @@ namespace SanNen.Draw
                 throw new InvalidOperationException("Lõi báo: " + J.S(J.Get(goc, "thong_bao"), "lỗi không rõ"));
             return goc;
         }
+
+        /// <summary>Chạy `cau_noi` với danh sách đối số truyền qua `--args-file` UTF-8 (an toàn cho chữ Việt có dấu).</summary>
+        public static object ChayArgs(CauHinh c, string lenh, string[] cacDong, string fileRa)
+        {
+            string thieu = c.ThieuGi();
+            if (thieu != null) throw new InvalidOperationException(thieu);
+            if (File.Exists(fileRa)) File.Delete(fileRa);
+            string af = Path.Combine(ThuMucTam(), "sn_args_" + Process.GetCurrentProcess().Id + ".txt");
+            List<string> ds = new List<string>();
+            ds.Add(lenh);
+            ds.Add("--lot");
+            ds.Add(c.Lot);
+            ds.Add("--json");
+            ds.Add("--ra");
+            ds.Add(fileRa);
+            if (cacDong != null)
+                foreach (string s in cacDong)
+                    if (!string.IsNullOrEmpty(s)) ds.Add(s);
+            File.WriteAllLines(af, ds.ToArray(), new UTF8Encoding(false));
+            try
+            {
+                string nhatKy;
+                int ma = Chay(c, "-X utf8 -m sannen_cad.cau_noi --args-file " + Trich(af), out nhatKy);
+                if (!File.Exists(fileRa))
+                    throw new InvalidOperationException("Python không trả kết quả (mã thoát " + ma + "). Kiểm tra python= trong " + c.File
+                        + " đã cài sannen-core chưa. " + Cat(nhatKy));
+                object goc = J.Parse(File.ReadAllText(fileRa, new UTF8Encoding(false)));
+                if (!J.B(J.Get(goc, "ok")))
+                    throw new InvalidOperationException("Lõi báo: " + J.S(J.Get(goc, "thong_bao"), "lỗi không rõ"));
+                return goc;
+            }
+            finally
+            {
+                try { if (File.Exists(af)) File.Delete(af); } catch (Exception) { }
+            }
+        }
     }
 }

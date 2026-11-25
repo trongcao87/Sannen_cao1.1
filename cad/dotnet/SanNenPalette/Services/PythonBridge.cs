@@ -53,5 +53,20 @@ namespace SanNen.Palette.Services
             return r;
         }
 
+        /// <summary>Xóa sạch dữ liệu xử lý cũ (10_process, 20_output, luoi_tuy_chinh.yaml...) khi tắt phiên làm việc hoặc mở bản vẽ mới.</summary>
+        public static void XoaDuLieuCu()
+        {
+            try
+            {
+                CauHinh c = CauHinh.Doc();
+                if (c.ThieuGi() != null) return;
+                string ra = Path.Combine(Path.GetTempPath(), "sn_xoa_cu_" + Process.GetCurrentProcess().Id + ".json");
+                string nhatKy;
+                CauNoiPython.Chay(c, "-X utf8 -m sannen_cad.cau_noi xoa-du-lieu-cu --lot \"" + c.Lot + "\" --json --ra \"" + ra + "\"", out nhatKy);
+                try { if (File.Exists(ra)) File.Delete(ra); } catch (Exception) { }
+            }
+            catch (Exception) { }
+        }
+
     }
 }

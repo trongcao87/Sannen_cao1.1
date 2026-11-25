@@ -39,9 +39,11 @@ foreach ($t in "acmgd.dll", "accoremgd.dll", "acdbmgd.dll") {
 $files = Get-ChildItem -Path $nguon -Filter *.cs -Recurse | Sort-Object FullName | ForEach-Object { $_.FullName }
 if (-not $files) { Loi "Không thấy file .cs trong $nguon" }
 
+$binTam = Join-Path $bin "_build"
 New-Item -ItemType Directory -Force -Path $bin | Out-Null
-# Biên dịch ra file tạm rồi mới thay DLL: nếu AutoCAD đang giữ DLL cũ (đã NETLOAD) thì báo rõ thay vì hỏng DLL.
-$tam = Join-Path $bin "SanNenPalette.new.dll"
+New-Item -ItemType Directory -Force -Path $binTam | Out-Null
+# Biên dịch ra thư mục tạm với đúng tên SanNenPalette.dll (để AssemblyName là "SanNenPalette"):
+$tam = Join-Path $binTam "SanNenPalette.dll"
 $rsp = Join-Path $bin "SanNenPalette.rsp"
 $dong = @(
     "/nologo", "/target:library", "/optimize+", "/debug:pdbonly", "/codepage:65001", "/utf8output", "/nowarn:1701,1702",

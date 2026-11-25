@@ -38,7 +38,16 @@ namespace SanNen.Palette.Ui
             _lamMoi.Text = "↻ Làm mới";
             _lamMoi.Dock = DockStyle.Right;
             _lamMoi.Width = 100;
-            _lamMoi.Click += delegate { Chay(delegate { DieuPhoi.YeuCauNgay(true, true); }); };
+            _lamMoi.Click += delegate
+            {
+                Chay(delegate
+                {
+                    string err = CadLenh.LamMoiXoaCu();
+                    if (err != null) Bao(err);
+                    else Bao("Đang xóa dữ liệu cũ đã có từ trước và làm mới…");
+                    DieuPhoi.YeuCau(true, true);
+                });
+            };
             _tt.Dock = DockStyle.Fill;
             _tt.TextAlign = ContentAlignment.MiddleLeft;
             _tt.Tag = "mo";

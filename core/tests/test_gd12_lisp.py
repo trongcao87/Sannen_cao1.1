@@ -23,11 +23,12 @@ LSP = LISP_DIR / "sannen.lsp"
 DCL = LISP_DIR / "sannen.dcl"
 ACC = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Autodesk" / "AutoCAD 2022" / "accoreconsole.exe"
 CAC_LENH_BAT_BUOC = [
-    "SN_LOT", "SN_TRANGTHAI", "SN_NHAP", "SN_MAT", "SN_LO", "SN_LUOITINH", "SN_TINH", "SN_VE", "SN_XOA",
+    "SN_LOT", "SN_TRANGTHAI", "SN_TAOMAT", "SN_CHONBIEN", "SN_CHONDUTGAY",
+    "SN_NHAP", "SN_MAT", "SN_LO", "SN_LUOITINH", "SN_TINH", "SN_VE", "SN_XOA",
     "SN_TIN3D", "SN_XEM3D", "SN_LUOI", "SN_DOICOT", "SN_CHENCOT", "SN_XOACOT", "SN_DOIHANG", "SN_CHENHANG", "SN_XOAHANG",
     "SN_DICHLUOI", "SN_XOAYLUOI", "SN_CAPDO", "SN_NANGCD", "SN_SUADINH", "SN_MATCAT", "SN_BANG", "SN_EXCEL",
     "SN_CANHBAO", "SN_CONGO", "SN_DONGBO", "SN_DUYET", "SN_MENU", "SN", "SN_QL"]
-HOP_THOAI = ["sn_ql", "sn_tin3d", "sn_luoi", "sn_capdo", "sn_matcat", "sn_bang", "sn_canhbao", "sn_duyet"]
+HOP_THOAI = ["sn_ql", "sn_tin3d", "sn_luoi", "sn_capdo", "sn_matcat", "sn_bang", "sn_canhbao", "sn_duyet", "sn_taomat"]
 
 
 # ======================================================================================== (a) TĨNH

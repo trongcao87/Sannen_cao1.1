@@ -88,9 +88,9 @@ namespace SanNen.Draw
         }
 
         // ------------------------------------------------------------------ chung
-        delegate void HanhDong(Document doc, Editor ed);
+        internal delegate void HanhDong(Document doc, Editor ed);
 
-        static void Chay(string ten, HanhDong h)
+        internal static void Chay(string ten, HanhDong h)
         {
             Document doc = CoreApp.DocumentManager.MdiActiveDocument;
             if (doc == null) return;
@@ -100,7 +100,7 @@ namespace SanNen.Draw
         }
 
         /// <summary>Hỏi một chuỗi trên dòng lệnh. Enter = "" (trả chuỗi rỗng); ESC = null.</summary>
-        static string HoiChuoi(Editor ed, string cau)
+        internal static string HoiChuoi(Editor ed, string cau)
         {
             PromptStringOptions o = new PromptStringOptions(cau);
             o.AllowSpaces = true;
@@ -109,8 +109,56 @@ namespace SanNen.Draw
             return (r.StringResult ?? "").Trim();
         }
 
+        internal static bool HoiYesNo(Editor ed, string cau, bool macDinhYes)
+        {
+            PromptKeywordOptions o = new PromptKeywordOptions(cau + " [Yes/No] <" + (macDinhYes ? "Yes" : "No") + ">: ");
+            o.Keywords.Add("Yes");
+            o.Keywords.Add("No");
+            o.Keywords.Default = macDinhYes ? "Yes" : "No";
+            o.AllowNone = true;
+            PromptResult r = ed.GetKeywords(o);
+            if (r.Status == PromptStatus.None) return macDinhYes;
+            return r.Status == PromptStatus.OK && r.StringResult == "Yes";
+        }
+
+        /// <summary>Chọn một điểm trên bản vẽ, tạm tắt osnap (bit 16384 của OSMODE) và khôi phục nguyên trạng kể cả khi ESC.</summary>
+        internal static bool ChonDiemKhongOsnap(Editor ed, string cau, Point3d? goc, bool choEnter, out Point3d pt)
+        {
+            pt = Point3d.Origin;
+            int cu = 0;
+            bool daTat = false;
+            try
+            {
+                cu = Convert.ToInt32(CoreApp.GetSystemVariable("OSMODE"));
+                if ((cu & 16384) == 0)
+                {
+                    CoreApp.SetSystemVariable("OSMODE", cu | 16384);
+                    daTat = true;
+                    ed.WriteMessage("\n  (đã tạm tắt osnap)");
+                }
+            }
+            catch (Exception) { }
+            try
+            {
+                PromptPointOptions o = new PromptPointOptions(cau);
+                o.AllowNone = choEnter;
+                if (goc.HasValue) { o.UseBasePoint = true; o.BasePoint = goc.Value; o.UseDashedLine = true; }
+                PromptPointResult r = ed.GetPoint(o);
+                if (r.Status != PromptStatus.OK) return false;
+                pt = r.Value;
+                return true;
+            }
+            finally
+            {
+                if (daTat)
+                {
+                    try { CoreApp.SetSystemVariable("OSMODE", cu); } catch (Exception) { }
+                }
+            }
+        }
+
         /// <summary>Gọi Python (`ve-ke-hoach`) và đọc kế hoạch. Kế hoạch chỉ ĐỌC lô; lỗi của lõi hiện nguyên văn tiếng Việt.</summary>
-        static KeHoach DungKeHoach(string cheDo, string them)
+        internal static KeHoach DungKeHoach(string cheDo, string them)
         {
             CauHinh c = CauHinh.Doc();
             string tmp = CauNoiPython.ThuMucTam();
@@ -121,7 +169,22 @@ namespace SanNen.Draw
             return KeHoach.DocFile(fileKh);
         }
 
-        static KetQuaVe VeVaBao(Document doc, Editor ed, string lenh, KeHoach kh)
+        internal static KeHoach DungKeHoachArgs(string cheDo, string[] cacDong)
+        {
+            CauHinh c = CauHinh.Doc();
+            string tmp = CauNoiPython.ThuMucTam();
+            string fileKh = Path.Combine(tmp, "sn_ke_hoach.json"), ra = Path.Combine(tmp, "sn_ke_hoach_ra.json");
+            if (File.Exists(fileKh)) File.Delete(fileKh);
+            System.Collections.Generic.List<string> ds = new System.Collections.Generic.List<string>();
+            ds.Add("--che-do"); ds.Add(cheDo);
+            ds.Add("--ke-hoach"); ds.Add(fileKh);
+            if (cacDong != null) ds.AddRange(cacDong);
+            CauNoiPython.ChayArgs(c, "ve-ke-hoach", ds.ToArray(), ra);
+            if (!File.Exists(fileKh)) throw new InvalidOperationException("Lõi không ghi file kế hoạch vẽ " + fileKh + ".");
+            return KeHoach.DocFile(fileKh);
+        }
+
+        internal static KetQuaVe VeVaBao(Document doc, Editor ed, string lenh, KeHoach kh)
         {
             KetQuaVe kq = DrawEngine.Ve(doc, kh);
             ed.WriteMessage("\n" + lenh + " — lô " + kh.MaLo + ", đợt " + kh.Dot + ": " + kq.TomTat());

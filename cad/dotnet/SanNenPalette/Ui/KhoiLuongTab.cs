@@ -1,4 +1,4 @@
-﻿// Tab "Khối lượng": số nộp (lưới) / số kiểm (lăng trụ) / chênh lệch / ô lệch lớn / ba cổng duyệt — TẤT CẢ do lõi tính và định dạng.
+// Tab "Khối lượng": số nộp (lưới) / số kiểm (lăng trụ) / chênh lệch / ô lệch lớn / ba cổng duyệt — TẤT CẢ do lõi tính và định dạng.
 // Palette chỉ HIỂN THỊ trạng thái cổng và gọi SN_DUYET (người bấm duyệt tại chỗ); chốt chặn ba cổng nằm ở core/sannen/cong.py.
 // Các nút gọi lệnh LISP có sẵn; chuyển sang C# ở bước 3 lộ trình (_agent/KIEN-TRUC-TOI-UU.md).
 using System;
@@ -31,11 +31,12 @@ namespace SanNen.Palette.Ui
             _bang.Dock = DockStyle.Fill;
             Than.Controls.Add(_bang);
             Than.Controls.Add(HangNut(
-                Nut("Tính lại (SN_TINH)", delegate { GuiLenh("SN_TINH ", "Tính khối lượng (xem trước, hỏi xác nhận)"); }),
-                Nut("Bảng biểu (SN_BANG)", delegate { GuiLenh("SN_BANG ", "Chèn bảng khối lượng"); }),
+                Nut("Tính đào đắp lưới (SN_TINH)", delegate { GuiLenh("SN_TINH ", "Tính toán đào đắp lưới và vẽ khối lượng từng ô / ranh đào đắp"); }),
+                Nut("Cộng ô (DD_MC)", delegate { GuiLenh("SN_CONGO ", "Cộng khối lượng hai ô lưới cạnh nhau trên bản vẽ"); }),
+                Nut("Bảng biểu", delegate { Bao(CadLenh.Bang() ?? "Chèn bảng khối lượng — xem dòng lệnh AutoCAD."); }),
                 Nut("Excel (SN_EXCEL)", delegate { GuiLenh("SN_EXCEL ", "Xuất Excel + hồ sơ"); }),
                 Nut("Trình xem 3D HTML", delegate { GuiLenh("SN_XEM3D ", "Mở trình xem 3D"); }),
-                Nut("Duyệt cổng… (SN_DUYET)", delegate { GuiLenh("SN_DUYET ", "Mở hộp duyệt cổng"); })));
+                Nut("Duyệt cổng…", delegate { Bao(CadLenh.Duyet() ?? "Duyệt cổng — xem dòng lệnh AutoCAD."); })));
             Than.Controls.Add(_cu);
             Than.Controls.Add(_cong);
             DungXong();

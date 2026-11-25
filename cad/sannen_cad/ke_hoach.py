@@ -312,6 +312,31 @@ def tao_ke_hoach_mat_cat(lot_root, ten: str, goc_ve=None, ty_le: float = 5.0, tr
     return be.ke_hoach()
 
 
+def tao_ke_hoach_bang(lot_root, loai: str, goc_ve: tuple[float, float]) -> dict:
+    """Kế hoạch vẽ bảng biểu (`tong`, `tong-hop`, hoặc `o`) tại `goc_ve`. Xóa bảng cùng `kieu=` trước."""
+    if loai not in ("tong", "tong-hop", "o"):
+        raise ValueError("--loai phải là tong, tong-hop hoặc o")
+    nc = ve.ngu_canh(lot_root)
+    vol = nc["vol"]
+    if loai == "o":
+        import yaml
+        from sannen import xuat
+        from sannen.config import nguong
+        lot = Lot(Path(lot_root).resolve())
+        cfg = doc_lot(lot.lot_yaml)
+        pj = lot.root.parent.parent / "project.yaml"
+        du_an = (yaml.safe_load(pj.read_text(encoding="utf-8")) or {}) if pj.exists() else {}
+        kt = xuat.kiem_khop(vol, nguong(cfg))
+        ent = bo_cuc.bang_ent(xuat.tao_bang_in_cad(cfg, du_an, vol, kt), goc_ve)
+    else:
+        tieu, hang = bo_cuc.hang_bang_tong(vol, loai)
+        ent = bo_cuc.bang_don_gian_ent(tieu, hang, goc_ve)
+    be = BackendKeHoach("bang")
+    be.cad_purge_sn(nc["ma_lo"], nc["dot"], xem_truoc=False, loai=("bang",), ex=[f"kieu={loai}"])
+    be.ve_ent(nc["ma_lo"], nc["dot"], nc["hash_tv"], "bang", "SN-BANG", ent, False, kieu=loai)
+    return be.ke_hoach()
+
+
 def ghi_json(kh: dict) -> bytes:
     """JSON UTF-8 gọn (không BOM, không khoảng trắng thừa) — cùng kế hoạch thì cùng từng byte."""
     return (json.dumps(kh, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n").encode("utf-8")

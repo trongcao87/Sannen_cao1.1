@@ -6,14 +6,29 @@ he_toa_do: VN-2000
 don_vi: m
 phuong_phap_chinh_thuc: luoi_o_vuong
 
-# Nguồn điểm: bảng khảo sát nhà thầu nộp (nguon: dxf_layer | excel | csv | dot_truoc).
-# Bản vẽ DXF của nhà thầu trùng bảng này 100 % (đã kiểm: 604/604 điểm mốc, 413/413 điểm đo).
+# Nguồn điểm: lấy trực tiếp từ 2 bản vẽ DXF trước và sau san lấp (layer "point", 604 điểm mốc, 413 điểm đo).
 be_mat_moc:
-  nguon: excel
-  file: BD truoc san lap.xlsx
+  nguon: dxf_layer
+  file: BẢN VẼ BIÊN TẬP TSL-01-CGP.dxf
+  layer: point
 be_mat_do:
-  nguon: excel
-  file: TỔNG HỢP SỐ LIỆU SSL LÔ 01-CGP.xls
+  nguon: dxf_layer
+  file: ssl01-cgp.dxf
+  layer: point
+
+# QUYẾT ĐỊNH CỦA NGƯỜI (24/11/2026): loại bỏ 11 điểm nghi vấn cao độ bất thường (V-01..V-11 -> b).
+bo_diem:
+  - MOC-00020
+  - MOC-00132
+  - MOC-00136
+  - MOC-00300
+  - MOC-00387
+  - DO-00001
+  - DO-00021
+  - DO-00049
+  - DO-00058
+  - DO-00344
+  - DO-00360
 
 # QUYẾT ĐỊNH CỦA NGƯỜI (23/11/2026): biên lô = biên vùng san lấp, đa tuyến khép kín 74 đỉnh trên layer "0"
 # của ssl01-cgp.dxf (4.974 m²). Bản vẽ nhà thầu chưa gán layer SN-BIENLO và agent không được sửa 00_input.

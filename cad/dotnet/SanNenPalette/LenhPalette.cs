@@ -3,6 +3,7 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.Windows;
@@ -23,6 +24,7 @@ namespace SanNen.Palette
         {
             try
             {
+                AppDomain.CurrentDomain.AssemblyResolve += TimAssembly;
                 Document d = AcApp.DocumentManager.MdiActiveDocument;
                 if (d != null) d.Editor.WriteMessage("\nSAN NỀN palette đã nạp — gõ SN_PALETTE để mở/tắt bảng dọc.");
             }
@@ -31,7 +33,29 @@ namespace SanNen.Palette
 
         public void Terminate()
         {
-            try { LenhPalette.Huy(); } catch (Exception) { }
+            try
+            {
+                AppDomain.CurrentDomain.AssemblyResolve -= TimAssembly;
+                PythonBridge.XoaDuLieuCu();
+                LenhPalette.Huy();
+            }
+            catch (Exception) { }
+        }
+
+        static Assembly TimAssembly(object sender, ResolveEventArgs args)
+        {
+            try
+            {
+                string ten = (args.Name ?? "").Split(',')[0].Trim();
+                if (!ten.StartsWith("SanNenDraw", StringComparison.OrdinalIgnoreCase)) return null;
+                foreach (Assembly a in AppDomain.CurrentDomain.GetAssemblies())
+                    if (a.GetName().Name.StartsWith("SanNenDraw", StringComparison.OrdinalIgnoreCase)) return a;
+                string dir = Path.GetDirectoryName(typeof(KhoiDong).Assembly.Location);
+                string p = Path.Combine(dir, "SanNenDraw.dll");
+                if (File.Exists(p)) return Assembly.LoadFrom(p);
+            }
+            catch (Exception) { }
+            return null;
         }
     }
 

@@ -158,6 +158,215 @@ def doc_bien_polyline(dxf_path: Path, layer: str, so_dinh: int, cung_tron_sai_so
     return DuongBao(pts, True, dien_tich(pts))
 
 
+def _doc_diem_tu_msp(msp, layer: str, prefix: str) -> list[Diem]:
+    """Đọc POINT, INSERT và TEXT (có giá trị số) trên một layer của modelspace."""
+    ds: list[Diem] = []
+    i = 0
+    for e in msp.query("POINT"):
+        if e.dxf.layer != layer:
+            continue
+        i += 1
+        loc = e.dxf.location
+        ds.append(Diem(f"{prefix}-{i:05d}", loc.y, loc.x, loc.z))
+    for e in msp.query("INSERT"):
+        if e.dxf.layer != layer:
+            continue
+        i += 1
+        loc = e.dxf.insert
+        ds.append(Diem(f"{prefix}-{i:05d}", loc.y, loc.x, loc.z, "block"))
+    for e in msp.query("TEXT"):
+        if e.dxf.layer != layer:
+            continue
+        try:
+            z = float(str(e.dxf.text).strip())
+        except ValueError:
+            continue
+        i += 1
+        loc = e.dxf.insert
+        ds.append(Diem(f"{prefix}-{i:05d}", loc.y, loc.x, z, "text"))
+    for e in msp.query("LINE"):
+        if e.dxf.layer != layer:
+            continue
+        for pt in (e.dxf.start, e.dxf.end):
+            i += 1
+            ds.append(Diem(f"{prefix}-{i:05d}", pt.y, pt.x, pt.z, "line"))
+    for e in msp.query("LWPOLYLINE"):
+        if e.dxf.layer != layer:
+            continue
+        elev = float(getattr(e.dxf, "elevation", 0.0) or 0.0)
+        for pt in e.get_points():
+            i += 1
+            ds.append(Diem(f"{prefix}-{i:05d}", float(pt[1]), float(pt[0]), elev, "pline2d"))
+    for e in msp.query("POLYLINE"):
+        if e.dxf.layer != layer or getattr(e, "is_poly_face_mesh", False):
+            continue
+        for v in e.vertices:
+            loc = v.dxf.location
+            i += 1
+            ds.append(Diem(f"{prefix}-{i:05d}", loc.y, loc.x, loc.z, "pline3d"))
+    return ds
+
+
+def doc_dut_gay_json(json_path: Path) -> tuple[list[list[tuple[float, float, float]]], str]:
+    """Đọc danh sách đường đứt gãy (breakline) 3D người dùng chọn trực tiếp trong AutoCAD (ghi ra JSON)."""
+    import json
+    if not Path(json_path).is_file():
+        raise LoiBien(f"Không thấy file đứt gãy {json_path}")
+    raw = json.loads(Path(json_path).read_text(encoding="utf-8-sig"))
+    ds_in = raw if isinstance(raw, list) else raw.get("dut_gay", [])
+    ra: list[list[tuple[float, float, float]]] = []
+    for duong in ds_in:
+        if len(duong) >= 2:
+            ra.append([(float(p[0]), float(p[1]), float(p[2])) for p in duong])
+    return ra, _hash(Path(json_path))
+
+
+def doc_bien_json(json_path: Path, cung_tron_sai_so_mm: float = 5.0) -> tuple[list[DuongBao], str]:
+    """Đọc biên lô (hoặc vùng loại trừ) người dùng chọn trực tiếp bằng nút lệnh trong AutoCAD (ghi ra JSON)."""
+    import json
+    if not Path(json_path).is_file():
+        raise LoiBien(f"Không thấy file biên lô {json_path}")
+    raw = json.loads(Path(json_path).read_text(encoding="utf-8-sig"))
+    vongs = raw if isinstance(raw, list) else raw.get("vong", [])
+    sai_so_m = cung_tron_sai_so_mm / 1000.0
+    ra: list[DuongBao] = []
+    for item in vongs:
+        pts_raw = item if isinstance(item, list) else item.get("dinh", [])
+        khep = True if isinstance(item, list) else bool(item.get("khep_kin", True))
+        if not pts_raw:
+            continue
+        co_bulge = any(len(p) >= 3 and float(p[2]) != 0.0 for p in pts_raw)
+        if co_bulge:
+            pts = bung_bulge([(float(p[0]), float(p[1]), float(p[2]) if len(p) >= 3 else 0.0) for p in pts_raw],
+                             khep, sai_so_m)
+        else:
+            pts = [(float(p[0]), float(p[1])) for p in pts_raw]
+        if len(pts) > 1 and pts[0] == pts[-1]:
+            pts = pts[:-1]
+        ra.append(DuongBao(pts, khep, dien_tich(pts)))
+    if not ra:
+        raise LoiBien(f"File biên lô {Path(json_path).name} không có đa tuyến hợp lệ.")
+    return ra, _hash(Path(json_path))
+
+
+def doc_diem_layer(dxf_path: Path, layer: str, prefix: str) -> tuple[list[Diem], str]:
+    """Đọc danh sách điểm từ một file DXF và layer chỉ định (khi khai file + layer riêng)."""
+    doc_ = ezdxf.readfile(dxf_path)
+    msp = doc_.modelspace()
+    if layer in ("*", "ALL", ""):
+        ds: list[Diem] = []
+        for l in sorted(ly.dxf.name for ly in doc_.layers if not ly.dxf.name.upper().startswith("SN-")):
+            ds.extend(_doc_diem_tu_msp(msp, l, prefix))
+        for i, p in enumerate(ds, 1):
+            p.id = f"{prefix}-{i:05d}"
+        return ds, _hash(dxf_path)
+    return _doc_diem_tu_msp(msp, layer, prefix), _hash(dxf_path)
+
+
+def _trich_luoi_tu_doan(doan: list[tuple[float, float, float, float]], tol_m: float = 0.05) -> dict:
+    """Từ danh sách đoạn thẳng (x1, y1, x2, y2) của lưới ô vuông/chữ nhật → nhận diện gốc lưới, góc xoay, cột (cot_m), hàng (hang_m)."""
+    import math
+    if len(doan) < 2:
+        raise LoiBien("Cần ít nhất 2 đường lưới (cột và hàng) để nhận diện lưới từ CAD/DXF.")
+    # Tìm góc chủ đạo (trong [0, pi/2)) từ các đoạn dài nhất
+    dai_ds = sorted(((math.hypot(x2 - x1, y2 - y1), x1, y1, x2, y2) for x1, y1, x2, y2 in doan), reverse=True)
+    if dai_ds[0][0] < 1e-3:
+        raise LoiBien("Các đoạn lưới quá ngắn.")
+    _, x1, y1, x2, y2 = dai_ds[0]
+    ang = math.atan2(y2 - y1, x2 - x1) % (math.pi / 2.0)
+    if abs(ang - math.pi / 2.0) < 1e-4:
+        ang = 0.0
+    c, s = math.cos(ang), math.sin(ang)
+
+    u_lines: list[float] = []
+    v_lines: list[float] = []
+    u_pts: list[float] = []
+    v_pts: list[float] = []
+    for l, ax, ay, bx, by in dai_ds:
+        if l < 1e-3:
+            continue
+        u1, v1 = c * ax + s * ay, -s * ax + c * ay
+        u2, v2 = c * bx + s * by, -s * bx + c * by
+        u_pts.extend((u1, u2))
+        v_pts.extend((v1, v2))
+        du, dv = abs(u2 - u1), abs(v2 - v1)
+        if dv <= max(tol_m, 0.02 * l) and du > dv:       # đường ngang (hàng): v gần hằng số
+            v_lines.append((v1 + v2) / 2.0)
+        elif du <= max(tol_m, 0.02 * l) and dv > du:     # đường dọc (cột): u gần hằng số
+            u_lines.append((u1 + u2) / 2.0)
+
+    def gom_moc(vals: list[float]) -> list[float]:
+        if not vals:
+            return []
+        sv = sorted(vals)
+        ra = [sv[0]]
+        for v in sv[1:]:
+            if v - ra[-1] > tol_m:
+                ra.append(v)
+            else:
+                ra[-1] = (ra[-1] + v) / 2.0
+        return ra
+
+    us = gom_moc(u_lines)
+    vs = gom_moc(v_lines)
+    if len(us) < 2 or len(vs) < 2:
+        # Dự phòng khi lưới vẽ bằng các ô chữ nhật rời (LWPOLYLINE 4 đỉnh): gom mọi toạ độ đỉnh
+        us = gom_moc(u_pts)
+        vs = gom_moc(v_pts)
+    if len(us) < 2 or len(vs) < 2:
+        raise LoiBien(f"Không nhận diện đủ cột và hàng từ dữ liệu lưới (tìm thấy {len(us)} đường dọc, {len(vs)} đường ngang).")
+    cot_m = [round(us[i + 1] - us[i], 4) for i in range(len(us) - 1) if us[i + 1] - us[i] > tol_m]
+    hang_m = [round(vs[j + 1] - vs[j], 4) for j in range(len(vs) - 1) if vs[j + 1] - vs[j] > tol_m]
+    u0, v0 = us[0], vs[0]
+    e0, n0 = c * u0 - s * v0, s * u0 + c * v0
+    from collections import Counter
+    kt_pho_bien = Counter(cot_m + hang_m).most_common(1)[0][0]
+    return {"goc_luoi": [round(e0, 4), round(n0, 4)], "goc_xoay_do": round(math.degrees(ang), 4),
+            "cot_m": cot_m, "hang_m": hang_m, "kich_thuoc_o_m": kt_pho_bien,
+            "nx": len(cot_m), "ny": len(hang_m)}
+
+
+def doc_luoi_dxf(path: Path, layer: str | None = None) -> dict:
+    """Import thông số lưới ô vuông/chữ nhật từ file DXF hoặc file JSON đoạn thẳng do AutoCAD xuất."""
+    import json
+    p = Path(path)
+    if not p.is_file():
+        raise LoiBien(f"Không thấy file lưới: {p}")
+    if p.suffix.lower() == ".json":
+        raw = json.loads(p.read_text(encoding="utf-8-sig"))
+        if isinstance(raw, dict) and "cot_m" in raw and "hang_m" in raw:
+            return raw
+        doan_in = raw if isinstance(raw, list) else raw.get("doan", [])
+        doan = [(float(d[0]), float(d[1]), float(d[2]), float(d[3])) for d in doan_in if len(d) >= 4]
+        return _trich_luoi_tu_doan(doan)
+    doc_ = ezdxf.readfile(p)
+    msp = doc_.modelspace()
+    # Nếu không chỉ định layer: ưu tiên layer SN-LUOI / LUOI, nếu không có thì đọc tất cả LINE/LWPOLYLINE
+    if not layer or layer in ("*", "ALL"):
+        ten_ly = {ly.dxf.name.upper(): ly.dxf.name for ly in doc_.layers}
+        chon_ly = None
+        for k in ("SN-LUOI", "LUOI", "GRID"):
+            if k in ten_ly:
+                chon_ly = ten_ly[k]
+                break
+    else:
+        chon_ly = layer
+    doan: list[tuple[float, float, float, float]] = []
+    for e in msp.query("LINE"):
+        if chon_ly and e.dxf.layer.upper() != chon_ly.upper():
+            continue
+        doan.append((float(e.dxf.start.x), float(e.dxf.start.y), float(e.dxf.end.x), float(e.dxf.end.y)))
+    for e in msp.query("LWPOLYLINE"):
+        if chon_ly and e.dxf.layer.upper() != chon_ly.upper():
+            continue
+        pts = [(float(pt[0]), float(pt[1])) for pt in e.get_points()]
+        if e.closed and len(pts) >= 3:
+            pts.append(pts[0])
+        for a, b in zip(pts, pts[1:]):
+            doan.append((a[0], a[1], b[0], b[1]))
+    return _trich_luoi_tu_doan(doan)
+
+
 def doc(dxf_path: Path, cung_tron_sai_so_mm: float = 5.0,
         cho_phep_layer_la: bool = False) -> DocDuoc:
     doc_ = ezdxf.readfile(dxf_path)
@@ -177,24 +386,8 @@ def doc(dxf_path: Path, cung_tron_sai_so_mm: float = 5.0,
     kq = DocDuoc(dxf=dxf_path, hash_sha256=_hash(dxf_path),
                  acad=str(doc_.acad_release), layers=sn)
 
-    for layer, gan in (("SN-DIEM-MOC", kq.diem_moc), ("SN-DIEM-DO", kq.diem_do)):
-        i = 0
-        for e in msp.query(f'POINT[layer=="{layer}"]'):
-            i += 1
-            loc = e.dxf.location
-            gan.append(Diem(f"{layer[3:]}-{i:05d}", loc.y, loc.x, loc.z))
-        for e in msp.query(f'INSERT[layer=="{layer}"]'):
-            i += 1
-            loc = e.dxf.insert
-            gan.append(Diem(f"{layer[3:]}-{i:05d}", loc.y, loc.x, loc.z, "block"))
-        for e in msp.query(f'TEXT[layer=="{layer}"]'):
-            try:
-                z = float(str(e.dxf.text).strip())
-            except ValueError:
-                continue
-            i += 1
-            loc = e.dxf.insert
-            gan.append(Diem(f"{layer[3:]}-{i:05d}", loc.y, loc.x, z, "text"))
+    kq.diem_moc.extend(_doc_diem_tu_msp(msp, "SN-DIEM-MOC", "DIEM-MOC"))
+    kq.diem_do.extend(_doc_diem_tu_msp(msp, "SN-DIEM-DO", "DIEM-DO"))
 
     for e in msp.query('POLYLINE[layer=="SN-DUTGAY"]'):
         kq.dut_gay.append([(v.dxf.location.x, v.dxf.location.y, v.dxf.location.z)

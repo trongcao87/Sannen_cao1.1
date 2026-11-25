@@ -39,7 +39,8 @@ def test_giao_thuc_initialize_list_call():
     assert xu_ly({"jsonrpc": "2.0", "method": "notifications/initialized"}, "x", "1", bang) is None
     r = xu_ly({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, "x", "1", bang)
     ten = {t["name"] for t in r["result"]["tools"]}
-    assert {"sannen_trang_thai", "sannen_doc_viec", "sannen_duyet_cong", "sannen_ghi_quyet_dinh"} | {
+    assert {"sannen_trang_thai", "sannen_doc_viec", "sannen_duyet_cong", "sannen_ghi_quyet_dinh",
+            "sannen_thong_tin", "sannen_canh_bao", "sannen_ra_soat_phuong_an", "sannen_ve"} | {
         f"sannen_{v}" for v in ("nhap", "mat", "lo", "luoi", "hieuchinh", "tinh", "xuat")} == ten
     for t in r["result"]["tools"]:
         assert t["inputSchema"]["type"] == "object" and "lot" in t["inputSchema"]["required"]
@@ -212,3 +213,111 @@ def test_nhap_excel_chua_xac_nhan_thi_dung_o_mcp(tmp_path):
     assert loi and "[mã thoát 2" in t and "CẦN NGƯỜI XÁC NHẬN" in t
     t, loi = goi("sannen_nhap", lot=str(l.root), preview=False, xac_nhan_anh_xa=True)
     assert not loi
+
+
+def test_thong_tin_canh_bao_va_ve_y_dinh(tmp_path):
+    """Ba công cụ MCP gộp theo ý định (Bước 3): sannen_thong_tin, sannen_canh_bao, sannen_ve."""
+    l = lot_moi(tmp_path)
+    lot = str(l.root)
+    assert not goi("sannen_nhap", lot=lot, preview=False)[1]
+    assert not goi("sannen_duyet_cong", lot=lot, cong=1, nguoi_duyet="QS", bang_chung="OK")[1]
+    assert not goi("sannen_mat", lot=lot, preview=False)[1]
+    assert not goi("sannen_lo", lot=lot, preview=False)[1]
+    assert not goi("sannen_duyet_cong", lot=lot, cong=2, nguoi_duyet="QS", bang_chung="OK")[1]
+    assert not goi("sannen_luoi", lot=lot, preview=False)[1]
+    assert not goi("sannen_tinh", lot=lot, preview=False, sweep=False)[1]
+
+    t, loi = goi("sannen_thong_tin", lot=lot)
+    assert not loi
+    tt = json.loads(t)
+    assert tt["lo"]["ma_lo"] == "GT-01" and tt["so_lieu"]["khoiluong"]["co"] is True
+
+    t, loi = goi("sannen_canh_bao", lot=lot)
+    assert not loi and "phat_hien" in json.loads(t)
+
+    # sannen_ve mặc định preview=True: không ghi file
+    t, loi = goi("sannen_ve", lot=lot, lop=["luoi", "nhan"])
+    assert not loi
+    v = json.loads(t)
+    assert v["preview"] is True and v["tom_tat"]["so_doi_tuong"] > 0
+    assert not (l.output_dir / "ke_hoach_ve.json").exists()
+
+    # preview=False: ghi file kế hoạch JSON
+    t, loi = goi("sannen_ve", lot=lot, che_do="bang", loai="tong", preview=False)
+    assert not loi and (l.output_dir / "ke_hoach_ve.json").exists()
+    assert not loi
+
+
+def test_agent_chi_chay_ra_soat_va_phuong_an_khi_be_mat_da_khoi_tao(tmp_path):
+    """Agent chỉ chạy bước rà soát, chuẩn hóa và tạo nhiều phương án khi người dùng đã khởi tạo bề mặt thành công."""
+    l = lot_moi(tmp_path)
+    lot = str(l.root)
+    # 1. Chưa khởi tạo bề mặt → TỪ CHỐI
+    t, loi = goi("sannen_ra_soat_phuong_an", lot=lot)
+    assert loi and t.startswith("TỪ CHỐI") and "CHƯA khởi tạo xong hai bề mặt" in t
+
+    # 2. Mới chạy nhap, chưa dựng bề mặt → vẫn TỪ CHỐI
+    goi("sannen_nhap", lot=lot, preview=False)
+    t, loi = goi("sannen_ra_soat_phuong_an", lot=lot)
+    assert loi and t.startswith("TỪ CHỐI")
+
+    # 3. Người dùng khởi tạo bề mặt thành công (qua cau_noi khoi-tao-be-mat)
+    sys.path.insert(0, str(CORE.parent / "cad"))
+    from sannen_cad import cau_noi as CN
+    ra = tmp_path / "kt_ra.json"
+    assert CN.main(["khoi-tao-be-mat", "--lot", lot, "--json", "--ra", str(ra)]) == 0
+    kq = json.loads(ra.read_text(encoding="utf-8"))
+    assert kq["ok"] is True and "khởi tạo bề mặt thành công" in kq["thong_bao"]
+
+    # 4. Bề mặt đã khởi tạo → Agent chạy rà soát, chuẩn hóa, quét phương án thành công
+    tt = json.loads(goi("sannen_trang_thai", lot=lot)[0])
+    assert tt["be_mat_da_khoi_tao"] is True and tt["san_sang_agent_ra_soat"] is True
+    t, loi = goi("sannen_ra_soat_phuong_an", lot=lot, preview=True)
+    assert not loi and "RÀ SOÁT CHẤT LƯỢNG BỀ MẶT & BIÊN LÔ" in t
+
+    # Duyệt cổng 2 → chạy chính thức đặt lưới + quét ma trận phương án (--sweep)
+    goi("sannen_duyet_cong", lot=lot, cong=2, nguoi_duyet="QS", bang_chung="Đã khởi tạo bề mặt ổn, chạy rà soát và phương án")
+    t, loi = goi("sannen_ra_soat_phuong_an", lot=lot, preview=False)
+    assert not loi and "SWEEP:" in t and (l.process_dir / "volume.json").exists()
+    vol = json.loads((l.process_dir / "volume.json").read_text(encoding="utf-8"))
+    assert "sweep" in vol and len(vol["sweep"]["A"]) >= 8 and len(vol["sweep"]["B"]) >= 5
+
+
+def test_luoi_import_dxf_va_day_tu_chat_mcp(tmp_path):
+    """Import lưới từ file DXF/JSON hoặc đẩy cấu hình cột/hàng từ cửa sổ Chat qua MCP."""
+    import ezdxf
+    l, lot = chuan_bi_den_cong2(tmp_path)
+    goi("sannen_duyet_cong", lot=lot, cong=2, nguoi_duyet="QS", bang_chung="Duyệt bề mặt để đặt lưới từ DXF/MCP")
+
+    # 1. Tạo file DXF chứa lưới 4 cột (25m) × 3 hàng (20m) tại gốc (E0, N0)
+    dxf_luoi = tmp_path / "luoi_mau.dxf"
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    doc.layers.add("SN-LUOI")
+    for i in range(5):
+        x = E0 + i * 25.0
+        msp.add_line((x, N0), (x, N0 + 60.0), dxfattribs={"layer": "SN-LUOI"})
+    for j in range(4):
+        y = N0 + j * 20.0
+        msp.add_line((E0, y), (E0 + 100.0, y), dxfattribs={"layer": "SN-LUOI"})
+    doc.saveas(dxf_luoi)
+
+    # 2. Import lưới qua MCP sannen_luoi (tu_file_dxf)
+    t, loi = goi("sannen_luoi", lot=lot, preview=False, tu_file_dxf=str(dxf_luoi))
+    assert not loi and (l.root / "luoi_tuy_chinh.yaml").exists()
+    g = json.loads((l.process_dir / "grid.json").read_text(encoding="utf-8"))
+    assert g["tham_so"]["cot_m"] == [25.0] * 4 and g["tham_so"]["hang_m"] == [20.0] * 3
+
+    # 3. Đẩy cấu hình cột/hàng tùy chỉnh từ Chat qua MCP (cot="5x20", hang="3x20")
+    t, loi = goi("sannen_luoi", lot=lot, preview=False, cot="5x20", hang="3x20")
+    assert not loi
+    g2 = json.loads((l.process_dir / "grid.json").read_text(encoding="utf-8"))
+    assert g2["tham_so"]["cot_m"] == [20.0] * 5 and g2["tham_so"]["hang_m"] == [20.0] * 3
+
+    # 4. Cầu nối luoi-import-dxf --chi-doc cho hộp thoại AutoCAD SN_LUOI
+    sys.path.insert(0, str(CORE.parent / "cad"))
+    from sannen_cad import cau_noi as CN
+    ra = tmp_path / "imp_ra.json"
+    assert CN.main(["luoi-import-dxf", "--lot", lot, "--tu-file", str(dxf_luoi), "--chi-doc", "--json", "--ra", str(ra)]) == 0
+    kq = json.loads(ra.read_text(encoding="utf-8"))
+    assert kq["ok"] is True and kq["du_lieu"]["cot"] == "4x25" and kq["du_lieu"]["hang"] == "3x20"

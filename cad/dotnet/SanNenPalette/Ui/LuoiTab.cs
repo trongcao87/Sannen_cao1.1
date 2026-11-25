@@ -1,4 +1,4 @@
-﻿// Tab "Lưới": thông số lưới hiện tại + ô nhập Cột / Hàng / Bù dữ liệu. Các nút GHI chỉ gọi lệnh LISP có sẵn
+// Tab "Lưới": thông số lưới hiện tại + ô nhập Cột / Hàng / Bù dữ liệu. Các nút GHI chỉ gọi lệnh LISP có sẵn
 // (SN_LUOIAPDUNG, SN_DICHLUOI, SN_XOAYLUOI, SN_LUOI, SN_VE) để vẫn xin xác nhận (RULES 4); palette KHÔNG tự ghi file lô.
 // Kích thước ô / gốc / góc / cách bù thiếu là QUYẾT ĐỊNH của người (RULES 9) — palette chỉ chuyển giá trị người gõ.
 using System;
@@ -47,11 +47,16 @@ namespace SanNen.Palette.Ui
             Than.Controls.Add(_bang);
             Than.Controls.Add(nhap);
             Than.Controls.Add(HangNut(
-                Nut("Áp dụng", ApDung),
-                Nut("Di chuyển…", delegate { GuiLenh("SN_DICHLUOI ", "Di chuyển lưới"); }),
-                Nut("Xoay…", delegate { GuiLenh("SN_XOAYLUOI ", "Xoay lưới"); }),
-                Nut("Vẽ lại lưới", delegate { Bao(CadLenh.VeLai() ?? "Vẽ lại kết quả bằng C# (SN_VE_NET) — xem dòng lệnh AutoCAD."); }),
-                Nut("Hộp thoại lưới…", delegate { GuiLenh("SN_LUOI ", "Mở hộp thoại lưới"); })));
+                Nut("1. Tạo lưới (DD_TAOLUOI)…", delegate { Bao(CadLenh.Luoi() ?? "Mở hộp thoại Tạo & hiệu chỉnh lưới (SN_LUOI / DD_TAOLUOI)."); }),
+                Nut("2. Vùng đào đắp…", delegate { GuiLenh("SN_VUNGDAODAP ", "Xác định vùng đào đắp & vùng bỏ qua (cắt lưới ngoài biên)"); }),
+                Nut("3. Gán cao độ nút", delegate { GuiLenh("SN_GANCAODO ", "Nội suy CĐTN, CĐTK, Chênh cao tại các nút lưới"); }),
+                Nut("4. Sửa cao độ nút…", delegate { GuiLenh("SN_CAPDO ", "Hiệu chỉnh cao độ đỉnh/đáy tại các nút lưới"); }),
+                Nut("Nâng/hạ CĐTK…", delegate { GuiLenh("SN_NANGCD ", "Nâng/hạ cao độ thiết kế cho nhiều nút lưới"); }),
+                Nut("Di chuyển…", delegate { Bao(CadLenh.DichLuoi() ?? "Di chuyển lưới — xem dòng lệnh AutoCAD."); }),
+                Nut("Đổi góc…", delegate { Bao(CadLenh.XoayLuoi() ?? "Đổi góc nghiêng lưới — xem dòng lệnh AutoCAD."); }),
+                Nut("Xóa lưới", delegate { GuiLenh("SN_XOALUOI ", "Xóa lưới hiện tại trên bản vẽ và trong lô"); }),
+                Nut("Áp dụng cột/hàng", ApDung),
+                Nut("Vẽ lại lưới", delegate { Bao(CadLenh.VeLai() ?? "Vẽ lại kết quả — xem dòng lệnh AutoCAD."); })));
             Than.Controls.Add(_canhBao);
             DungXong();
         }
@@ -94,9 +99,8 @@ namespace SanNen.Palette.Ui
             if (hang.Length > 0 && !MauSoKt.IsMatch(hang)) { Bao("Hàng phải dạng Số×KT, ví dụ 10x20,5x15 (chữ x)."); return; }
             if (!double.TryParse(bu, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out ns) || ns < 0)
             { Bao("Bù dữ liệu phải là số ≥ 0 (mét)."); return; }
-            // giá trị chỉ gồm chữ số, x, dấu chấm, dấu phẩy, khoảng trắng → an toàn khi nhúng vào biểu thức LISP
-            string s = "(setq *sn-pal-luoi* (list \"" + cot + "\" \"" + hang + "\" \"" + ns.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\")) SN_LUOIAPDUNG ";
-            GuiLenh(s, "Áp dụng lưới (lệnh SN_LUOIAPDUNG sẽ hỏi xác nhận)");
+            string err = CadLenh.LuoiApDung(cot, hang, ns.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Bao(err ?? "Áp dụng lưới — xác nhận Yes/No trên dòng lệnh AutoCAD.");
             _daSua = false;
         }
     }

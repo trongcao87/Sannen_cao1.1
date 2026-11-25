@@ -71,7 +71,7 @@ Palette và CLI **không bao giờ** tự ghi quyết định thay bạn; chúng
 | 0 | Commit mốc hiện trạng | ✅ `feec7f8` (đã push) |
 | 1 | Palette C# 6 tab | ✅ build + nạp; hiển thị cây và tab Khối lượng đã thấy đúng; các tab còn lại chưa thử |
 | 2 | Python xuất kế hoạch vẽ JSON (`ve-ke-hoach`) · C# `DrawEngine` (`SanNenDraw.dll`) · `SN_VE_NET`, `SN_XOA_NET`, `SN_TIN3D_NET` (LISP `SN_VE`/`SN_XOA`/`SN_TIN3D` tự chuyển sang khi có DLL) | ✅ **phần kiểm được không giao diện** (accoreconsole thật: vẽ hai lần không đè, purge đúng lô+đợt, XDATA khớp LISP, 100.000 thực thể ≈ 3,5 s); ⏳ chưa kiểm trên GUI: hộp Yes/No, nút palette *Vẽ lại lưới*/*Xem 3D*, góc nhìn thấy được, Ctrl+Z |
-| 3 | `SN_LUOI`, `SN_SUADINH`, `SN_MATCAT`, `SN_DONGBO`, `SN_DUYET` sang C#; gộp hai MCP thành một | ⏳ **bước kế tiếp** (đã có sẵn: kế hoạch vẽ mặt cắt `ve-ke-hoach --che-do mat-cat`, nên `SN_MATCAT` C# chỉ cần chọn 2 điểm rồi gọi cầu nối) |
+| 3 | `SN_LUOI_NET`, `SN_DICHLUOI_NET`, `SN_XOAYLUOI_NET`, `SN_LUOI_BO_NET`, `SN_SUADINH_NET`, `SN_DONGBO_NET`, `SN_DUYET_NET`, `SN_MATCAT_NET`, `SN_XOAMATCAT_NET`, `SN_BANG_NET`, `SN_TAOMAT_NET`, `SN_CHONBIEN_NET`, `SN_CHONDUTGAY_NET` sang C#; gộp MCP thành một server `sannen-mcp` theo ý định (`sannen_ve`, `sannen_thong_tin`, `sannen_canh_bao`, `sannen_ra_soat_phuong_an`) | ✅ **Hoàn tất mã C#, LISP định tuyến tự động sang C#, MCP & kiểm thử** |
 | 4 | Gỡ LISP/DCL, cầu nối s-expression, backend COM rỗng | ⏳ (chỉ sau khi C# qua checklist GUI từng lệnh) |
 | 5 | Dọn `Tham khao/`, hợp nhất `AGENTS.md`, cập nhật README | ⏳ |
 
