@@ -398,7 +398,11 @@
     ((or (null (setq id (load_dialog f))) (< id 1)) (sn:bao "Không nạp được sannen.dcl.") nil)
     (T
      (if (new_dialog ten id)
-       (progn (apply fn-khoi nil) (setq kq (start_dialog)))
+       (progn
+         (action_tile "cancel" "(done_dialog 0)")
+         (action_tile "b_dong" "(done_dialog 0)")
+         (sn:an fn-khoi)
+         (setq kq (start_dialog)))
        (sn:bao (strcat "Không mở được hộp thoại " ten ".")))
      (unload_dialog id)
      kq)))
@@ -673,13 +677,21 @@
 (defun c:SN_TIN3D () (sn:chay-lenh "SN_TIN3D" 'sn:l-tin3d))
 
 ;;; SN_XEM3D: lõi dựng trình xem 3D HTML (python -m sannen.cli xem3d --lot <lô> --mo) và mở bằng trình duyệt mặc định
-(defun sn:l-xem3d ( / kq)
+(defun sn:l-xem3d ( / kq f sh)
   (if (sn:can-lot)
     (progn
       (sn:bao "Đang dựng trình xem 3D (HTML) bằng lõi…")
       (setq kq (sn:chay "xem3d" "" nil))
       (if (sn:get "ok" kq)
-        (sn:bao (strcat "Đã mở trình xem 3D: " (sn:neu (sn:get "file" (sn:get "du_lieu" kq)) "(trình duyệt mặc định)")))
+        (progn
+          (setq f (sn:get "file" (sn:get "du_lieu" kq)))
+          (if (and f (findfile f))
+            (vl-catch-all-apply
+              '(lambda ()
+                 (setq sh (vlax-create-object "WScript.Shell"))
+                 (vlax-invoke sh 'Run (strcat "cmd /c start \"\" \"" (findfile f) "\"") 0 :vlax-false)
+                 (vlax-release-object sh))))
+          (sn:bao (strcat "Đã mở trình xem 3D trên trình duyệt: " (sn:neu f "(trình duyệt mặc định)"))))
         (sn:bao (strcat "Không mở được trình xem 3D: " (sn:neu (sn:get "thong_bao" kq) "lỗi không rõ")))))))
 (defun c:SN_XEM3D () (sn:chay-lenh "SN_XEM3D" 'sn:l-xem3d))
 
@@ -1518,13 +1530,13 @@
     (if (or (/= *sn-cb-chan* "1") (equal (sn:get "muc" i) "chan")) (setq r (cons i r))))
   (reverse r))
 
-(defun sn:cb-dien ( / dong)
+(defun sn:cb-dien ( / dong m)
   (setq *sn-cb-hien* (sn:cb-loc))
   (start_list "l_ds")
   (foreach i *sn-cb-hien*
-    (setq dong (strcat (sn:neu (sn:get "ma" i) "?") " [" (sn:cb-muc-chu (sn:get "muc" i)) "] "
-                       (let ((m (sn:cat-dong (sn:neu (sn:get "mo_ta" i) ""))))
-                         (if (> (strlen m) 110) (strcat (substr m 1 107) "…") m))))
+    (setq m (sn:cat-dong (sn:neu (sn:get "mo_ta" i) ""))
+          dong (strcat (sn:neu (sn:get "ma" i) "?") " [" (sn:cb-muc-chu (sn:get "muc" i)) "] "
+                       (if (> (strlen m) 110) (strcat (substr m 1 107) "…") m)))
     (add_list dong))
   (end_list)
   (sn:vn "t_tieu" (strcat (itoa (length *sn-cb-hien*)) " việc hiển thị / " (itoa (length *sn-cb-ds*)) " tổng cộng")))
@@ -1966,10 +1978,10 @@
       (sn:tm-chon-vong nil)
       (if *sn-tm-f-bien*
         (progn
-          (setq kq (sn:chay "khoi-tao-be-mat" (strcat "--file-bien-lo=" (sn:q *sn-tm-f-bien*) " --chi-nhap") nil))
+          (setq kq (sn:chay-ve "khoi-tao-be-mat" (strcat "--file-bien-lo=" (sn:q *sn-tm-f-bien*) " --chi-nhap")))
           (if (sn:get "ok" kq)
-            (sn:bao "Đã cập nhật và chuẩn hóa biên lô từ đối tượng vừa chọn trên bản vẽ.")
-            (sn:bao (strcat "Không cập nhật được biên lô: " (sn:neu (sn:get "thong_bao" kq) "?")))))))))
+            (sn:bao "Đã cập nhật phạm vi đường bao (biên lô): lưới tam giác TIN sẽ chỉ tạo bên trong đường bao này.")
+            (sn:bao (strcat "Không cập nhật được đường bao: " (sn:neu (sn:get "thong_bao" kq) "?")))))))))
 (defun c:SN_CHONBIEN () (sn:chay-lenh "SN_CHONBIEN" 'sn:l-chon-bien-nhanh))
 
 (defun sn:l-chon-dg-nhanh ( / kq)
@@ -1979,11 +1991,234 @@
       (sn:tm-chon-dg)
       (if *sn-tm-f-dg*
         (progn
-          (setq kq (sn:chay "khoi-tao-be-mat" (strcat "--file-dut-gay=" (sn:q *sn-tm-f-dg*) " --chi-nhap") nil))
+          (setq kq (sn:chay-ve "khoi-tao-be-mat" (strcat "--file-dut-gay=" (sn:q *sn-tm-f-dg*))))
           (if (sn:get "ok" kq)
-            (sn:bao "Đã cập nhật đường đứt gãy (Breakline) từ các đối tượng vừa chọn trên bản vẽ.")
+            (sn:bao "Đã cập nhật đường đứt gãy (Breakline) và dựng lại lưới TIN trên bản vẽ.")
             (sn:bao (strcat "Không cập nhật được đứt gãy: " (sn:neu (sn:get "thong_bao" kq) "?")))))))))
 (defun c:SN_CHONDUTGAY () (sn:chay-lenh "SN_CHONDUTGAY" 'sn:l-chon-dg-nhanh))
+
+(defun sn:l-chon-loaitru-nhanh ( / kq)
+  (if (sn:can-lot)
+    (progn
+      (setq *sn-tm-f-lt* nil)
+      (sn:tm-chon-vong T)
+      (if *sn-tm-f-lt*
+        (progn
+          (setq kq (sn:chay-ve "khoi-tao-be-mat" (strcat "--file-loai-tru=" (sn:q *sn-tm-f-lt*) " --chi-nhap")))
+          (if (sn:get "ok" kq)
+            (sn:bao "Đã cập nhật vùng loại trừ (ao hồ, công trình bỏ qua) từ đối tượng vừa chọn trên bản vẽ.")
+            (sn:bao (strcat "Không cập nhật được vùng loại trừ: " (sn:neu (sn:get "thong_bao" kq) "?")))))))))
+(defun c:SN_CHONLOAITRU () (sn:chay-lenh "SN_CHONLOAITRU" 'sn:l-chon-loaitru-nhanh))
+
+(defun sn:l-lay-diem-cad (bm / kq)
+  (if (sn:can-lot)
+    (progn
+      (if (= bm "moc") (setq *sn-tm-ng-moc* nil *sn-tm-f-moc* nil) (setq *sn-tm-ng-do* nil *sn-tm-f-do* nil))
+      (sn:tm-chon-diem-cad bm)
+      (if (if (= bm "moc") *sn-tm-f-moc* *sn-tm-f-do*)
+        (progn
+          (setq kq (sn:chay "khoi-tao-be-mat"
+                            (strcat (if (= bm "moc")
+                                      (strcat "--nguon-moc cad_chon --file-moc=" (sn:q *sn-tm-f-moc*))
+                                      (strcat "--nguon-do cad_chon --file-do=" (sn:q *sn-tm-f-do*)))
+                                    " --chi-nhap") nil))
+          (if (sn:get "ok" kq)
+            (sn:bao (strcat "Đã nạp tọa độ điểm cho " (if (= bm "moc") "MHTN (mặt gốc)" "MHTK (mặt thiết kế)")
+                            " từ bản vẽ CAD — tiếp theo chọn «3. Phạm vi đường bao» (hoặc «2. Breakline» nếu có) rồi bấm «4. Tạo TIN»."))
+            (sn:bao (strcat "Lỗi nạp điểm: " (sn:neu (sn:get "thong_bao" kq) "?")))))))))
+(defun c:SN_LAYDIEM_MOC () (sn:chay-lenh "SN_LAYDIEM_MOC" '(lambda () (sn:l-lay-diem-cad "moc"))))
+(defun c:SN_LAYDIEM_DO ()  (sn:chay-lenh "SN_LAYDIEM_DO"  '(lambda () (sn:l-lay-diem-cad "do"))))
+
+(defun sn:l-import-diem-excel (bm / kq)
+  (if (sn:can-lot)
+    (progn
+      (if (= bm "moc") (setq *sn-tm-ng-moc* nil *sn-tm-f-moc* nil) (setq *sn-tm-ng-do* nil *sn-tm-f-do* nil))
+      (sn:tm-chon-excel bm)
+      (if (if (= bm "moc") *sn-tm-f-moc* *sn-tm-f-do*)
+        (progn
+          (sn:bao (strcat "Đang import tọa độ từ file và chèn hiển thị trực quan lên bản vẽ AutoCAD cho "
+                          (if (= bm "moc") "MHTN (mặt gốc)" "MHTK (mặt thiết kế)") "…"))
+          (setq kq (sn:chay-ve "khoi-tao-be-mat"
+                               (strcat "--xac-nhan-anh-xa --chi-nhap "
+                                       (if (= bm "moc")
+                                         (strcat "--nguon-moc " *sn-tm-ng-moc* " --file-moc=" (sn:q *sn-tm-f-moc*))
+                                         (strcat "--nguon-do " *sn-tm-ng-do* " --file-do=" (sn:q *sn-tm-f-do*))))))
+          (if (sn:get "ok" kq)
+            (sn:bao (strcat "Đã import và chèn dữ liệu điểm của " (if (= bm "moc") "MHTN (layer SN-DIEM-MOC)" "MHTK (layer SN-DIEM-DO)")
+                            " vào vùng CAD đang mở! Bạn có thể kiểm tra bằng mắt, chọn «3. Phạm vi đường bao» rồi bấm «4. Tạo TIN»."))
+            (sn:bao (strcat "Lỗi import điểm: " (sn:neu (sn:get "thong_bao" kq) "?")))))))))
+(defun c:SN_EXCEL_MOC () (sn:chay-lenh "SN_EXCEL_MOC" '(lambda () (sn:l-import-diem-excel "moc"))))
+(defun c:SN_EXCEL_DO ()  (sn:chay-lenh "SN_EXCEL_DO"  '(lambda () (sn:l-import-diem-excel "do"))))
+
+(setq *sn-che-do-mesh* nil) ; nil = chỉ hiển thị lưới tam giác (2D Wireframe), T = hiển thị tô bóng 3D Mesh
+
+(defun sn:ap-che-do-mesh (bat-mesh bm / )
+  (setq *sn-che-do-mesh* bat-mesh)
+  (if bat-mesh
+    (progn
+      (sn:thu '(lambda () (command "_.VSCURRENT" "_E")))
+      (sn:bao "Đã BẬT hiển thị 3D Mesh (tô bóng bề mặt + cạnh tam giác)."))
+    (progn
+      (sn:thu '(lambda () (command "_.-VIEW" "_TOP")))
+      (sn:thu '(lambda () (command "_.VSCURRENT" "_2")))
+      (sn:bao "Đã TẮT tô bóng 3D Mesh — chỉ hiển thị lưới tam giác trên mặt bằng 2D."))))
+
+(defun sn:l-toggle-mesh (bm / lop)
+  (if (sn:can-lot)
+    (progn
+      (setq lop (sn:ql-ten-dot (if (= bm "do") "SN-3DF-DO" "SN-3DF-MOC") (sn:neu (sn:dot) 1)))
+      (if (not (tblsearch "LAYER" lop))
+        (sn:chay-ve "tin3d" (strcat "--be-mat " (if (member bm '("moc" "do")) bm "ca-hai") " --dang polyface"))
+        (sn:lop-bat lop T))
+      (sn:ap-che-do-mesh (not *sn-che-do-mesh*) bm))))
+(defun c:SN_TOGGLE_MESH_MOC () (sn:chay-lenh "SN_TOGGLE_MESH_MOC" '(lambda () (sn:l-toggle-mesh "moc"))))
+(defun c:SN_TOGGLE_MESH_DO ()  (sn:chay-lenh "SN_TOGGLE_MESH_DO"  '(lambda () (sn:l-toggle-mesh "do"))))
+(defun c:SN_TOGGLE_MESH ()     (sn:chay-lenh "SN_TOGGLE_MESH"     '(lambda () (sn:l-toggle-mesh "ca-hai"))))
+
+(defun sn:l-tao-tin-bm (bm / kq)
+  (if (sn:can-lot)
+    (progn
+      ;; Nếu phiên LISP hiện tại vẫn nhớ file điểm / đường bao / đứt gãy người dùng vừa chọn hoặc import, đồng bộ vào lô trước khi dựng TIN
+      (if (or (and (member bm '("moc" "ca-hai")) *sn-tm-ng-moc* *sn-tm-f-moc*)
+              (and (member bm '("do" "ca-hai")) *sn-tm-ng-do* *sn-tm-f-do*)
+              *sn-tm-f-bien* *sn-tm-f-dg* *sn-tm-f-lt*)
+        (sn:chay "khoi-tao-be-mat"
+                 (strcat "--xac-nhan-anh-xa --chi-nhap"
+                         (if (and *sn-tm-ng-moc* *sn-tm-f-moc*)
+                           (strcat " --nguon-moc " *sn-tm-ng-moc* " --file-moc=" (sn:q *sn-tm-f-moc*)) "")
+                         (if (and *sn-tm-ng-do* *sn-tm-f-do*)
+                           (strcat " --nguon-do " *sn-tm-ng-do* " --file-do=" (sn:q *sn-tm-f-do*)) "")
+                         (if *sn-tm-f-dg*   (strcat " --file-dut-gay=" (sn:q *sn-tm-f-dg*)) "")
+                         (if *sn-tm-f-bien* (strcat " --file-bien-lo=" (sn:q *sn-tm-f-bien*)) "")
+                         (if *sn-tm-f-lt*   (strcat " --file-loai-tru=" (sn:q *sn-tm-f-lt*)) "")) nil))
+      (sn:bao (strcat "Đang dựng lưới tam giác TIN và kiểm soát chất lượng (QC) cho "
+                      (cond ((= bm "moc") "MHTN (mặt gốc)") ((= bm "do") "MHTK (mặt thiết kế)") (T "cả hai bề mặt MHTN + MHTK")) "…"))
+      (setq kq (sn:chay-ve "tin-sua" (strcat "--lenh tao-lai --be-mat " bm)))
+      (if (sn:get "ok" kq)
+        (progn
+          (sn:in-chay kq)
+          (if *sn-che-do-mesh*
+            (sn:xem-3d "1" "1" (if (= bm "ca-hai") "ca" bm))
+            (progn
+              (sn:thu '(lambda () (command "_.VSCURRENT" "_2")))
+              (sn:thu '(lambda () (command "_.REGEN")))))
+          (sn:bao (sn:neu (sn:get "thong_bao" kq) "Đã dựng lưới tam giác TIN trên bản vẽ.")))))))
+(defun c:SN_TAOTIN_MOC () (sn:chay-lenh "SN_TAOTIN_MOC" '(lambda () (sn:l-tao-tin-bm "moc"))))
+(defun c:SN_TAOTIN_DO ()  (sn:chay-lenh "SN_TAOTIN_DO"  '(lambda () (sn:l-tao-tin-bm "do"))))
+(defun c:SN_TAOLAITIN ()  (sn:chay-lenh "SN_TAOLAITIN"  '(lambda () (sn:l-tao-tin-bm "ca-hai"))))
+
+(defun sn:l-mesh-bm (bm / kq)
+  (if (sn:can-lot)
+    (progn
+      (setq *sn-che-do-mesh* T)
+      (if (sn:nap-draw)
+        (progn
+          (command "_.SN_TIN3D_NET" (cond ((= bm "moc") "Moc") ((= bm "do") "Do") (T "Cahai")))
+          (sn:thu '(lambda () (command "_.VSCURRENT" "_E"))))
+        (progn
+          (setq kq (sn:chay-ve "tin3d" (strcat "--be-mat " bm " --dang polyface")))
+          (if (sn:get "ok" kq)
+            (sn:xem-3d "1" "1" (if (= bm "ca-hai") "ca" bm))))))))
+(defun c:SN_MESH_MOC () (sn:chay-lenh "SN_MESH_MOC" '(lambda () (sn:l-mesh-bm "moc"))))
+(defun c:SN_MESH_DO ()  (sn:chay-lenh "SN_MESH_DO"  '(lambda () (sn:l-mesh-bm "do"))))
+
+(defun sn:hoi-be-mat-sua (bm / k)
+  (if (member bm '("moc" "do"))
+    bm
+    (progn
+      (initget "MHTN MHTK")
+      (setq k (getkword "\nChọn bề mặt cần hiệu chỉnh [MHTN/MHTK] <MHTN>: "))
+      (if (= k "MHTK") "do" "moc"))))
+
+(defun sn:l-lat-canh (bm / b p)
+  (if (sn:can-lot)
+    (progn
+      (setq b (sn:hoi-be-mat-sua bm))
+      (while (setq p (sn:lay-diem (strcat "\nChọn điểm trên cạnh chung của 2 tam giác cần lật (" (if (= b "moc") "MHTN" "MHTK") ") <Enter để kết thúc>: ") nil))
+        (sn:chay-ve "tin-sua" (strcat "--lenh lat-canh --be-mat " b " --e=" (rtos (car p) 2 4) " --n=" (rtos (cadr p) 2 4)))))))
+(defun c:SN_LATCANH_MOC () (sn:chay-lenh "SN_LATCANH_MOC" '(lambda () (sn:l-lat-canh "moc"))))
+(defun c:SN_LATCANH_DO ()  (sn:chay-lenh "SN_LATCANH_DO"  '(lambda () (sn:l-lat-canh "do"))))
+(defun c:SN_LATCANH ()     (sn:chay-lenh "SN_LATCANH"     '(lambda () (sn:l-lat-canh nil))))
+
+(defun sn:l-them-diem-tin (bm / b p z)
+  (if (sn:can-lot)
+    (progn
+      (setq b (sn:hoi-be-mat-sua bm))
+      (if (setq p (sn:lay-diem (strcat "\nChọn vị trí điểm cần thêm vào " (if (= b "moc") "MHTN" "MHTK") ": ") nil))
+        (progn
+          (setq z (getreal (strcat "\nCao độ Z (m) của điểm mới <" (rtos (sn:neu (caddr p) 0.0) 2 3) ">: ")))
+          (if (null z) (setq z (sn:neu (caddr p) 0.0)))
+          (sn:chay-ve "tin-sua" (strcat "--lenh them-diem --be-mat " b
+                                        " --e=" (rtos (car p) 2 4) " --n=" (rtos (cadr p) 2 4) " --z=" (rtos z 2 4))))))))
+(defun c:SN_THEMDIEM_MOC () (sn:chay-lenh "SN_THEMDIEM_MOC" '(lambda () (sn:l-them-diem-tin "moc"))))
+(defun c:SN_THEMDIEM_DO ()  (sn:chay-lenh "SN_THEMDIEM_DO"  '(lambda () (sn:l-them-diem-tin "do"))))
+(defun c:SN_THEMDIEM ()     (sn:chay-lenh "SN_THEMDIEM"     '(lambda () (sn:l-them-diem-tin nil))))
+
+(defun sn:l-xoa-diem-tin (bm / b p)
+  (if (sn:can-lot)
+    (progn
+      (setq b (sn:hoi-be-mat-sua bm))
+      (if (setq p (sn:lay-diem (strcat "\nChọn vị trí gần điểm (gai nhọn / bất thường) cần xóa khỏi " (if (= b "moc") "MHTN" "MHTK") ": ") nil))
+        (sn:chay-ve "tin-sua" (strcat "--lenh xoa-diem --be-mat " b
+                                      " --e=" (rtos (car p) 2 4) " --n=" (rtos (cadr p) 2 4)))))))
+(defun c:SN_XOADIEM_MOC () (sn:chay-lenh "SN_XOADIEM_MOC" '(lambda () (sn:l-xoa-diem-tin "moc"))))
+(defun c:SN_XOADIEM_DO ()  (sn:chay-lenh "SN_XOADIEM_DO"  '(lambda () (sn:l-xoa-diem-tin "do"))))
+(defun c:SN_XOADIEM ()     (sn:chay-lenh "SN_XOADIEM"     '(lambda () (sn:l-xoa-diem-tin nil))))
+
+(defun sn:l-xoa-tg-tin (bm / b tiep p1 p2 osm r2)
+  (if (sn:can-lot)
+    (progn
+      (setq b (sn:hoi-be-mat-sua bm)
+            tiep T)
+      (prompt (strcat "\n── XÓA TAM GIÁC THỪA (" (if (= b "moc") "MHTN" "MHTK")
+                      "): Chọn góc thứ nhất để quét khung chữ nhật chọn nhiều tam giác (hoặc gõ D để vẽ đường cắt, P để pick 1 điểm) ──"))
+      (while tiep
+        (setq osm (getvar "OSMODE"))
+        (setvar "OSMODE" (logior osm 16384))
+        (initget "Duongcat Pick")
+        (setq p1 (vl-catch-all-apply 'getpoint
+                   (list (strcat "\nChọn góc 1 quét vùng xóa tam giác (" (if (= b "moc") "MHTN" "MHTK") ") [Duongcat/Pick] <Enter kết thúc>: "))))
+        (setvar "OSMODE" osm)
+        (cond
+          ((or (null p1) (vl-catch-all-error-p p1))
+           (setq tiep nil))
+          ((= p1 "Pick")
+           (if (setq p2 (sn:lay-diem "\nPick điểm bên trong tam giác cần xóa: " nil))
+             (sn:chay-ve "tin-sua" (strcat "--lenh xoa-tam-giac --be-mat " b
+                                           " --e=" (rtos (car p2) 2 4) " --n=" (rtos (cadr p2) 2 4)))))
+          ((= p1 "Duongcat")
+           (if (and (setq p1 (sn:lay-diem "\nĐiểm đầu đường cắt qua các tam giác cần xóa: " nil))
+                    (setq p2 (sn:lay-diem "\nĐiểm cuối đường cắt: " p1)))
+             (sn:chay-ve "tin-sua" (strcat "--lenh xoa-tam-giac --be-mat " b " --kieu fence"
+                                           " --a=" (rtos (car p1) 2 4) "," (rtos (cadr p1) 2 4)
+                                           " --b=" (rtos (car p2) 2 4) "," (rtos (cadr p2) 2 4)))))
+          ((listp p1)
+           (setq osm (getvar "OSMODE"))
+           (setvar "OSMODE" (logior osm 16384))
+           (setq r2 (vl-catch-all-apply 'getcorner
+                      (list p1 "\nChọn góc đối diện của khung quét (Enter tại chỗ = xóa 1 tam giác tại điểm vừa pick): ")))
+           (setvar "OSMODE" osm)
+           (if (and (not (vl-catch-all-error-p r2)) (listp r2)
+                    (> (+ (abs (- (car r2) (car p1))) (abs (- (cadr r2) (cadr p1)))) 0.05))
+             (sn:chay-ve "tin-sua" (strcat "--lenh xoa-tam-giac --be-mat " b " --kieu crossing"
+                                           " --a=" (rtos (car p1) 2 4) "," (rtos (cadr p1) 2 4)
+                                           " --b=" (rtos (car r2) 2 4) "," (rtos (cadr r2) 2 4)))
+             (sn:chay-ve "tin-sua" (strcat "--lenh xoa-tam-giac --be-mat " b
+                                           " --e=" (rtos (car p1) 2 4) " --n=" (rtos (cadr p1) 2 4))))))))))
+(defun c:SN_XOATG_MOC () (sn:chay-lenh "SN_XOATG_MOC" '(lambda () (sn:l-xoa-tg-tin "moc"))))
+(defun c:SN_XOATG_DO ()  (sn:chay-lenh "SN_XOATG_DO"  '(lambda () (sn:l-xoa-tg-tin "do"))))
+(defun c:SN_XOATG ()     (sn:chay-lenh "SN_XOATG"     '(lambda () (sn:l-xoa-tg-tin nil))))
+
+(defun sn:l-nap-tu-mcp ( / kq)
+  (if (sn:can-lot)
+    (progn
+      (sn:bao "Đang đồng bộ dữ liệu đầu vào đã kiểm soát từ AI Agent (MCP) vào bản vẽ AutoCAD, dựng TIN & 3D Mesh…")
+      (setq kq (sn:chay-ve "nap-tu-mcp" "--be-mat ca-hai"))
+      (if (sn:get "ok" kq)
+        (progn
+          (sn:xem-3d "1" "1" "ca")
+          (sn:bao (sn:neu (sn:get "thong_bao" kq) "Đã đồng bộ dữ liệu từ Agent MCP và tạo lưới TIN + 3D Mesh thành công!")))))))
+(defun c:SN_NAP_TU_MCP () (sn:chay-lenh "SN_NAP_TU_MCP" 'sn:l-nap-tu-mcp))
 (defun c:SN_TAOMAT_NET ()     (c:SN_TAOMAT))
 (defun c:SN_CHONBIEN_NET ()   (c:SN_CHONBIEN))
 (defun c:SN_CHONDUTGAY_NET () (c:SN_CHONDUTGAY))
@@ -2407,9 +2642,16 @@
     ("BẢNG DỌC DOCK NHIỀU TAB (SN_PALETTE)" "SN_PALETTE") "-"
     ("Chọn lô…" "SN_LOT") ("Trạng thái lô" "SN_TRANGTHAI") "-"
     ("Dữ liệu" "SUB"
+      ("Đồng bộ dữ liệu từ AI Agent (MCP) & Tạo TIN" "SN_NAP_TU_MCP") "-"
       ("Khởi tạo bề mặt & biên lô thủ công (DD_DH)…" "SN_TAOMAT")
       ("Chọn biên lô trên bản vẽ…" "SN_CHONBIEN")
-      ("Chọn đường Breakline trên bản vẽ…" "SN_CHONDUTGAY")
+      ("Chọn vùng loại trừ trên bản vẽ…" "SN_CHONLOAITRU")
+      ("Chọn đường Breakline trên bản vẽ…" "SN_CHONDUTGAY") "-"
+      ("Tạo lại lưới TIN (MHTN + MHTK)" "SN_TAOLAITIN")
+      ("Hiệu chỉnh TIN: Lật cạnh tam giác…" "SN_LATCANH")
+      ("Hiệu chỉnh TIN: Thêm điểm vào TIN…" "SN_THEMDIEM")
+      ("Hiệu chỉnh TIN: Xóa điểm bất thường…" "SN_XOADIEM")
+      ("Hiệu chỉnh TIN: Xóa tam giác mép…" "SN_XOATG") "-"
       ("Làm mới & xóa dữ liệu cũ" "SN_LAMMOI") "-"
       ("Nạp dữ liệu (nhập)…" "SN_NHAP") ("Dựng bề mặt TIN (mặt)…" "SN_MAT") ("Chuẩn hóa biên lô…" "SN_LO") "-"
       ("Cảnh báo / QC…" "SN_CANHBAO"))
@@ -2498,15 +2740,27 @@
 ;;; Palette là add-in C# (DCL không dock được). LISP chỉ: (1) nạp DLL bằng NETLOAD rồi gọi lệnh .NET SN_PALETTE_MO
 ;;; (tên khác c:SN_PALETTE để không trùng nhau), (2) nhận giá trị từ palette cho hai lệnh GHI có xác nhận (RULES 4):
 ;;; SN_LUOIAPDUNG (tab Lưới) và SN_XOAMATCAT (tab Mặt cắt). Palette KHÔNG tự ghi gì vào lô.
-(setq *sn-pal-nap* nil     ; đã NETLOAD DLL trong phiên này?
+(setq *sn-pal-nap* nil     ; đường dẫn DLL palette đã NETLOAD gần nhất trong phiên này
       *sn-pal-luoi* nil    ; (cột hàng bù) do palette đặt trước khi gọi SN_LUOIAPDUNG
       *sn-pal-ten* nil)    ; tên mặt cắt do palette đặt trước khi gọi SN_XOAMATCAT
 
-(defun sn:pal-dll ( / cad f)
+(defun sn:pal-dll ( / cad fl p f1 f2)
   (if (setq cad (sn:cfg "cad"))
-    (if (findfile (setq f (strcat cad "\\dotnet\\bin\\SanNenPalette.dll"))) f)))
+    (cond
+      ((and (setq fl (findfile (strcat cad "\\dotnet\\bin\\latest_palette.txt")))
+            (setq p (sn:cat (sn:neu (sn:doc-van-ban fl) "")))
+            (/= p "")
+            (findfile p))
+       (findfile p))
+      ((and (setq f1 (strcat cad "\\dotnet\\bin\\_build\\SanNenPalette.dll"))
+            (setq f2 (strcat cad "\\dotnet\\bin\\SanNenPalette.dll"))
+            (findfile f1)
+            (or (null (findfile f2))
+                (> (vl-file-systime f1) (vl-file-systime f2))))
+       f1)
+      ((findfile (setq f2 (strcat cad "\\dotnet\\bin\\SanNenPalette.dll"))) f2))))
 
-(defun sn:l-palette ( / cad dll fd)
+(defun sn:l-palette ( / cad dll fd doi-dll)
   (cond
     ((null (setq cad (sn:cfg "cad")))
      (sn:bao (strcat "Chưa cấu hình cad= trong " (sn:cfg-file) " — chạy cad\\cai_dat_cad.ps1.")))
@@ -2514,7 +2768,8 @@
      (sn:bao (strcat "Chưa có SanNenPalette.dll. Xây một lần (ngoài AutoCAD, trong PowerShell): "
                      "powershell -ExecutionPolicy Bypass -File \"" cad "\\dotnet\\xay_palette.ps1\"  rồi gõ lại SN_PALETTE.")))
     (T
-     (if (not *sn-pal-nap*)
+     (setq doi-dll (and *sn-pal-nap* (sn:chuoi-p *sn-pal-nap*) (/= (strcase *sn-pal-nap*) (strcase dll))))
+     (if (or (not *sn-pal-nap*) doi-dll)
        (progn
          (sn:nap-draw)
          (sn:bao "Đang nạp palette (NETLOAD). Nếu AutoCAD hỏi tin cậy DLL: chọn Always Load (hoặc thêm thư mục cad\\dotnet\\bin vào TRUSTEDPATHS).")
@@ -2522,8 +2777,9 @@
          (setvar "FILEDIA" 0)
          (command "_.NETLOAD" dll)
          (setvar "FILEDIA" fd)
-         (setq *sn-pal-nap* T)))
-     (command "_.SN_PALETTE_MO"))))
+         (setq *sn-pal-nap* dll)
+         (if (not doi-dll) (command "_.SN_PALETTE_MO")))
+       (command "_.SN_PALETTE_MO")))))
 (defun c:SN_PALETTE () (sn:chay-lenh "SN_PALETTE" 'sn:l-palette))
 
 (defun sn:l-luoi-ap-dung ( / v cot hang ns a)
@@ -2571,12 +2827,9 @@
 ;;; ===========================================================================================
 (defun s::startup ()
   (vl-catch-all-apply 'sn:menu-an-toan nil)
-  ;; Nếu chạy trên AutoCAD có giao diện (không phải accoreconsole):
-  ;; Mở bản vẽ mới / phiên làm việc mới → xóa sạch dữ liệu xử lý cũ đã có từ trước để tính toán lô mới, rồi mở bảng dọc SAN NỀN
+  ;; Nếu chạy trên AutoCAD có giao diện (không phải accoreconsole): mở bảng dọc SAN NỀN (không tự xóa dữ liệu đang làm)
   (if (and (vlax-get-acad-object) (null (getenv "SANNEN_KHONG_NET")))
-    (progn
-      (if (sn:cfg "lot") (vl-catch-all-apply 'sn:chay (list "xoa-du-lieu-cu" "" nil)))
-      (if (sn:pal-dll) (vl-catch-all-apply 'sn:l-palette nil))))
+    (if (sn:pal-dll) (vl-catch-all-apply 'sn:l-palette nil)))
   (princ))
 
 (sn:doc-cfg)

@@ -1,4 +1,4 @@
-// Tab "Khối lượng": số nộp (lưới) / số kiểm (lăng trụ) / chênh lệch / ô lệch lớn / ba cổng duyệt — TẤT CẢ do lõi tính và định dạng.
+﻿// Tab "Khối lượng": số nộp (lưới) / số kiểm (lăng trụ) / chênh lệch / ô lệch lớn / ba cổng duyệt — TẤT CẢ do lõi tính và định dạng.
 // Palette chỉ HIỂN THỊ trạng thái cổng và gọi SN_DUYET (người bấm duyệt tại chỗ); chốt chặn ba cổng nằm ở core/sannen/cong.py.
 // Các nút gọi lệnh LISP có sẵn; chuyển sang C# ở bước 3 lộ trình (_agent/KIEN-TRUC-TOI-UU.md).
 using System;

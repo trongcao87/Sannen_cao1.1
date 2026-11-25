@@ -46,6 +46,10 @@ DAU_FILE = r""";; Sinh tự động bởi sannen_cad.backend_lisp — KHÔNG s�
                    (list *snv-xd*))))
 (defun snv:t (x y h s ly mau)
   (entmake (list '(0 . "TEXT") (cons 8 ly) (cons 62 mau) (cons 10 (list x y 0.0)) (cons 40 h) (cons 1 s) *snv-xd*)))
+(defun snv:t3 (x y z h s ly mau)
+  (entmake (list '(0 . "TEXT") (cons 8 ly) (cons 62 mau) (cons 10 (list x y z)) (cons 40 h) (cons 1 s) *snv-xd*)))
+(defun snv:pt (x y z ly mau)
+  (entmake (list '(0 . "POINT") '(100 . "AcDbEntity") (cons 8 ly) (cons 62 mau) '(100 . "AcDbPoint") (cons 10 (list x y z)) *snv-xd*)))
 (defun snv:m (x y h s ly mau)
   (entmake (list '(0 . "MTEXT") '(100 . "AcDbEntity") (cons 8 ly) (cons 62 mau) '(100 . "AcDbMText")
                  (cons 10 (list x y 0.0)) (cons 40 h) (cons 71 5) (cons 1 s) *snv-xd*)))
@@ -303,6 +307,10 @@ class BackendLisp(Backend):
             for x in ent:
                 if x[0] == "text":
                     self.dong.append(f"(snv:t {so(x[2])} {so(x[3])} {so(x[4])} {ls(x[1])} {ls(ten)} {x[5] if len(x) > 5 else 256})")
+                elif x[0] == "text3d":
+                    self.dong.append(f"(snv:t3 {so(x[2])} {so(x[3])} {so(x[4])} {so(x[5])} {ls(x[1])} {ls(ten)} {x[6] if len(x) > 6 else 256})")
+                elif x[0] == "point":
+                    self.dong.append(f"(snv:pt {so(x[1])} {so(x[2])} {so(x[3])} {ls(ten)} {x[4] if len(x) > 4 else 256})")
                 elif x[0] == "khung":
                     _, fx, fy, fw, fh = x
                     self.dong.append(f"(snv:pl {_pts([(fx, fy), (fx + fw, fy), (fx + fw, fy - fh), (fx, fy - fh)])} T {ls(ten)} 256)")

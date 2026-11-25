@@ -34,19 +34,32 @@ def _nap_be_mat(cfg: dict, nhan: str, d: "dxfio.DocDuoc | None", preview: bool,
 
     Trả về (điểm, kết quả bảng / dict thông tin DXF riêng hoặc None). Nguồn lạ thì dừng — không đoán (RULES 7).
     """
-    ch = cfg[f"be_mat_{nhan}"]
+    ch = cfg.get(f"be_mat_{nhan}") or {}
     nguon = ch.get("nguon", "dxf_layer")
+    if nguon in ("chua_khai_bao", "trong", "none"):
+        return [], {"file": "chua_khai_bao", "hash_sha256": hashlib.sha256(b"empty").hexdigest(),
+                    "layer": "CHUA_CHON", "so_diem": 0}
     if nguon == "dxf_layer":
         file_ten = ch.get("file")
         layer = ch.get("layer", LAYER_BE_MAT[nhan])
         if file_ten:
-            dxf_p = lot.input_dir / str(file_ten)
+            p_f = Path(str(file_ten))
+            dxf_p = p_f if p_f.is_absolute() else (
+                (lot.input_dir / p_f) if (lot.input_dir / p_f).is_file() else (
+                    (lot.root / p_f).resolve() if (lot.root / p_f).is_file() else (
+                        (lot.process_dir / p_f.name) if (lot.process_dir / p_f.name).is_file() else (lot.input_dir / p_f)
+                    )
+                )
+            )
             if not dxf_p.is_file():
                 raise bang_in.LoiNguon(
-                    f"be_mat_{nhan}.file = {file_ten} không tồn tại trong 00_input/.")
+                    f"be_mat_{nhan}.file = {file_ten} không tồn tại trong 00_input/ hoặc 10_process/.")
             prefix = "MOC" if nhan == "moc" else "DO"
             diem, h = dxfio.doc_diem_layer(dxf_p, str(layer), prefix)
-            return diem, {"file": dxf_p.name, "hash_sha256": h,
+            rel_dxf = dxf_p.name if dxf_p.parent == lot.input_dir else (
+                str(dxf_p.relative_to(lot.root)).replace("\\", "/") if dxf_p.is_relative_to(lot.root) else dxf_p.name
+            )
+            return diem, {"file": rel_dxf, "hash_sha256": h,
                           "layer": str(layer), "so_diem": len(diem)}
         if d is None:
             raise bang_in.LoiNguon(
@@ -105,7 +118,11 @@ def verb_nhap(lot: Lot, cfg: dict, preview: bool, xac_nhan: bool = False) -> int
     bien_nguon_info: dict | None = None
     if bien_cfg:
         b_nguon = bien_cfg.get("nguon", "dxf_polyline")
-        if b_nguon == "dxf_polyline" and bien_cfg.get("file"):
+        if b_nguon in ("chua_khai_bao", "trong", "none"):
+            bien_khai = []
+            bien_nguon_info = {"file": "chua_khai_bao", "hash_sha256": hashlib.sha256(b"empty").hexdigest(),
+                               "nguon": "chua_khai_bao", "so_vong": 0}
+        elif b_nguon == "dxf_polyline" and bien_cfg.get("file"):
             bk = dxfio.doc_bien_polyline(lot.input_dir / bien_cfg["file"], str(bien_cfg.get("layer", "0")),
                                          int(bien_cfg["so_dinh"]), ng["cung_tron_sai_so_mm"])
             bien_khai = [bk]
@@ -138,7 +155,11 @@ def verb_nhap(lot: Lot, cfg: dict, preview: bool, xac_nhan: bool = False) -> int
     dut_gay_khai: list[list[tuple[float, float, float]]] | None = None
     dut_gay_info: dict | None = None
     dg_cfg = cfg.get("dut_gay")
-    if isinstance(dg_cfg, dict) and dg_cfg.get("file"):
+    if isinstance(dg_cfg, dict) and dg_cfg.get("nguon") in ("chua_khai_bao", "trong", "none"):
+        dut_gay_khai = []
+        dut_gay_info = {"file": "chua_khai_bao", "hash_sha256": hashlib.sha256(b"empty").hexdigest(),
+                        "nguon": "chua_khai_bao", "so_duong": 0}
+    elif isinstance(dg_cfg, dict) and dg_cfg.get("file"):
         dg_nguon = dg_cfg.get("nguon", "cad_chon")
         p_dg = Path(dg_cfg["file"])
         if not p_dg.is_absolute():
@@ -167,6 +188,14 @@ def verb_nhap(lot: Lot, cfg: dict, preview: bool, xac_nhan: bool = False) -> int
         diem_moc = [p for p in diem_moc if p.id not in bo_set]
         diem_do = [p for p in diem_do if p.id not in bo_set]
         print(f"Bỏ    theo lot.yaml:bo_diem: mốc -{truoc_m - len(diem_moc)}, đo -{truoc_d - len(diem_do)} điểm")
+    them_cfg = cfg.get("them_diem") or {}
+    if isinstance(them_cfg, dict):
+        for nhan_t, ds_t in (("moc", diem_moc), ("do", diem_do)):
+            for it in (them_cfg.get(nhan_t) or []):
+                if isinstance(it, dict) and "e" in it and "n" in it and "z" in it:
+                    ds_t.append(dxfio.Diem(str(it.get("id") or f"THEM-{nhan_t.upper()}-{len(ds_t)+1:04d}"),
+                                           float(it["n"]), float(it["e"]), float(it["z"]),
+                                           str(it.get("code") or "cad_them"), "nguon_tuy_chinh.yaml"))
     for nhan, kq in (("mốc", bang_moc), ("đo", bang_do)):
         if isinstance(kq, bang_in.KetQuaBang):
             _mo_ta_bang(nhan, kq)
@@ -178,8 +207,10 @@ def verb_nhap(lot: Lot, cfg: dict, preview: bool, xac_nhan: bool = False) -> int
     hd = cfg.get("he_toa_do", "")
     phat_hien = [p for kq in (bang_moc, bang_do)
                  if isinstance(kq, bang_in.KetQuaBang) for p in kq.phat_hien]
-    phat_hien += qc.kiem_tra(diem_moc, ng, "bề mặt mốc", hd) + \
-                 qc.kiem_tra(diem_do, ng, "bề mặt đo", hd)
+    if diem_moc:
+        phat_hien += qc.kiem_tra(diem_moc, ng, "bề mặt mốc", hd)
+    if diem_do:
+        phat_hien += qc.kiem_tra(diem_do, ng, "bề mặt đo", hd)
     if d is None and bien_khai is None:
         phat_hien.append({"loai": "thieu_dxf", "muc": "canh_bao",
                           "mo_ta": "Không có file .dxf: chưa có biên lô, đứt gãy, vùng loại trừ "

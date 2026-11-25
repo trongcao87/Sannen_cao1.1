@@ -40,7 +40,8 @@ def test_giao_thuc_initialize_list_call():
     r = xu_ly({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, "x", "1", bang)
     ten = {t["name"] for t in r["result"]["tools"]}
     assert {"sannen_trang_thai", "sannen_doc_viec", "sannen_duyet_cong", "sannen_ghi_quyet_dinh",
-            "sannen_thong_tin", "sannen_canh_bao", "sannen_ra_soat_phuong_an", "sannen_ve"} | {
+            "sannen_thong_tin", "sannen_canh_bao", "sannen_ra_soat_phuong_an", "sannen_ve",
+            "sannen_day_tin_cad"} | {
         f"sannen_{v}" for v in ("nhap", "mat", "lo", "luoi", "hieuchinh", "tinh", "xuat")} == ten
     for t in r["result"]["tools"]:
         assert t["inputSchema"]["type"] == "object" and "lot" in t["inputSchema"]["required"]

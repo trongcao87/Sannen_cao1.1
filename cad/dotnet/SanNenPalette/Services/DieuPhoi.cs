@@ -55,7 +55,7 @@ namespace SanNen.Palette.Services
             try
             {
                 e.Document.CommandEnded += LenhXong;
-                ThreadPool.QueueUserWorkItem(delegate { PythonBridge.XoaDuLieuCu(); YeuCau(true, true); });
+                ThreadPool.QueueUserWorkItem(delegate { YeuCau(true, true); });
             }
             catch (Exception) { }
         }
@@ -65,7 +65,6 @@ namespace SanNen.Palette.Services
             try
             {
                 e.Document.CommandEnded -= LenhXong;
-                ThreadPool.QueueUserWorkItem(delegate { PythonBridge.XoaDuLieuCu(); });
             }
             catch (Exception) { }
         }

@@ -59,9 +59,8 @@ try {
     Move-Item -Force $tam $dll
     $pdb = [System.IO.Path]::ChangeExtension($tam, ".pdb")
     if (Test-Path $pdb) { Move-Item -Force $pdb ([System.IO.Path]::ChangeExtension($dll, ".pdb")) }
+    Write-Host ("XONG: " + $dll) -ForegroundColor Green
 } catch {
-    Remove-Item $tam -ErrorAction SilentlyContinue
-    Loi "Không ghi đè được $dll — AutoCAD đang giữ DLL cũ (đã NETLOAD). Đóng AutoCAD rồi chạy lại. ($($_.Exception.Message))"
+    Write-Host ("CẢNH BÁO: AutoCAD đang mở và giữ $dll — đã biên dịch bản mới tại $tam (sẽ ghi đè vào bin khi đóng AutoCAD).") -ForegroundColor Yellow
 }
-Write-Host ("XONG: " + $dll) -ForegroundColor Green
 Write-Host "Lệnh .NET: SN_VE_NET, SN_XOA_NET, SN_XOA_NET_Y, SN_TIN3D_NET, SN_KEHOACH_NET (sannen.lsp tự NETLOAD khi dùng SN_VE / SN_XOA / SN_TIN3D)."

@@ -36,6 +36,60 @@ def vong_ngoai(lot: Lot) -> list[list[tuple[float, float]]]:
             for f in doc_geojson(lot.process_dir / "boundary.geojson")]
 
 
+def vong_loai_tru(lot: Lot) -> list[list[tuple[float, float]]]:
+    return [[(c[0], c[1]) for c in f["geometry"]["coordinates"][0]]
+            for f in doc_geojson(lot.process_dir / "exclude.geojson")]
+
+
+def cat_tin_theo_bien(tin: Tin, bien: list[list[tuple[float, float]]],
+                      loai_tru: list[list[tuple[float, float]]] | None = None) -> int:
+    """Loại bỏ các tam giác nằm hoàn toàn ngoài phạm vi đường bao `bien` (hoặc nằm trọn trong vùng loại trừ `loai_tru`).
+    Giữ lại các tam giác có ít nhất một phần giao với phạm vi đường bao để không làm hở mép TIN sát biên lô.
+    Trả về số tam giác đã loại bỏ."""
+    if not bien:
+        return 0
+    from .geom import cat_loi, dien_tich_co_dau
+    goc = tin.goc
+    b_loc = []
+    for v in bien:
+        if len(v) >= 3:
+            pts = [goc.vao(e, n) for e, n in v]
+            if len(pts) > 1 and pts[0] == pts[-1]:
+                pts = pts[:-1]
+            if len(pts) >= 3:
+                b_loc.append(pts if dien_tich_co_dau(pts) >= 0 else pts[::-1])
+    if not b_loc:
+        return 0
+    lt_loc = []
+    for v in (loai_tru or []):
+        if len(v) >= 3:
+            pts = [goc.vao(e, n) for e, n in v]
+            if len(pts) > 1 and pts[0] == pts[-1]:
+                pts = pts[:-1]
+            if len(pts) >= 3:
+                lt_loc.append(pts if dien_tich_co_dau(pts) >= 0 else pts[::-1])
+    giu_t: list[tuple[int, int, int]] = []
+    giu_l: list[int] = []
+    bo = 0
+    for idx, (a, b, c) in enumerate(tin.tris):
+        tri = [(tin.x[a], tin.y[a]), (tin.x[b], tin.y[b]), (tin.x[c], tin.y[c])]
+        if dien_tich_co_dau(tri) < 0:
+            tri = tri[::-1]
+        dt_trong = sum(dien_tich_co_dau(cat_loi(v, tri)) for v in b_loc)
+        if lt_loc and dt_trong > 1e-9:
+            dt_trong -= sum(dien_tich_co_dau(cat_loi(v, tri)) for v in lt_loc)
+        if dt_trong > 1e-9:
+            giu_t.append((a, b, c))
+            giu_l.append(tin.loai[idx])
+        else:
+            bo += 1
+    if bo > 0 and giu_t:
+        tin.tris = giu_t
+        tin.loai = giu_l
+        tin._ban_do = None
+    return bo if giu_t else 0
+
+
 def kiem_hash_dau_vao(lot: Lot) -> dict:
     """So hash file nguồn với lúc `nhap` ghi nhận. Lệch thì dừng."""
     qi = lot.process_dir / "qc_input.json"
@@ -43,11 +97,17 @@ def kiem_hash_dau_vao(lot: Lot) -> dict:
         raise DauVaoDaDoi("Chưa có qc_input.json — chạy `nhap` trước.")
     d = io_out.doc_json(qi)
     for ten, nguon in d.get("nguon", {}).items():
-        if not nguon:
+        if not nguon or nguon.get("file") == "chua_khai_bao" or nguon.get("nguon") == "chua_khai_bao":
             continue
-        p = lot.input_dir / nguon["file"]
-        if not p.exists():
-            p = lot.root / nguon["file"]
+        f_str = str(nguon["file"])
+        p = Path(f_str)
+        if not p.is_absolute():
+            for cand in (lot.input_dir / f_str, lot.root / f_str, lot.process_dir / Path(f_str).name):
+                if cand.is_file():
+                    p = cand.resolve()
+                    break
+            else:
+                p = lot.input_dir / f_str
         if not p.exists() or bam_sha256(p) != nguon["hash_sha256"]:
             raise DauVaoDaDoi(f"{nguon['file']} đã thay đổi hoặc mất kể từ lần `nhap` gần nhất "
                               "— chạy lại `nhap` rồi duyệt lại (RULES: nguồn sự thật là file trong 00_input).")
@@ -128,28 +188,53 @@ def chay(lot: Lot, cfg: dict, be_mat: str, preview: bool) -> int:
     qi = kiem_hash_dau_vao(lot)
     nhan_list = ["moc", "do"] if be_mat == "ca-hai" else [be_mat]
     diem = {n: doc_points(lot.process_dir / f"points_{n}.csv") for n in ("moc", "do")}
-    # MỘT gốc chung cho cả hai bề mặt: mọi bước sau dùng đúng gốc này
-    goc = Goc.trong_tam([(p.easting, p.northing) for n in diem for p in diem[n]])
+    if be_mat == "ca-hai":
+        nhan_list = [n for n in ("moc", "do") if len(diem[n]) >= 3]
+        if not nhan_list:
+            raise TinLoi("Chưa có bề mặt nào có đủ 3 điểm — hãy chọn tọa độ trên CAD hoặc import từ Excel trước.")
+    else:
+        if len(diem[be_mat]) < 3:
+            ten_bm = "MHTN (mặt gốc)" if be_mat == "moc" else "MHTK (mặt thiết kế)"
+            raise TinLoi(f"Chưa có dữ liệu tọa độ điểm cho {ten_bm} — hãy bấm «Lấy tọa độ trên CAD» hoặc «Import từ Excel» cho {ten_bm} trước khi Tạo TIN!")
+    # MỘT gốc chung cho cả hai bề mặt (lấy từ tất cả các bề mặt đã có điểm)
+    all_pts = [(p.easting, p.northing) for n in diem for p in diem[n]]
+    goc = Goc.trong_tam(all_pts)
     bien = vong_ngoai(lot)
+    loai_tru = vong_loai_tru(lot)
 
     phat_hien: list[dict] = []
     thong_ke: dict = {}
     tin_ra: dict[str, Tin] = {}
     for n in nhan_list:
         tin, bc = dung_be_mat(lot, cfg, n, goc, ng, diem[n])
+        # Khi người dùng chọn phạm vi đường bao từ AutoCAD (nguon=cad_chon) hoặc khai cat_tin_theo_bien: true,
+        # lưới tam giác TIN chỉ giữ các tam giác nằm trong/chạm phạm vi đường bao.
+        bien_cfg = cfg.get("bien_lo") or {}
+        cat_bien = bool(cfg.get("cat_tin_theo_bien", False) or bien_cfg.get("nguon") in ("cad_chon", "json"))
+        so_ngoai_bien = cat_tin_theo_bien(tin, bien, loai_tru) if (bien and cat_bien) else 0
+        if so_ngoai_bien > 0:
+            # Lọc lại danh sách thiếu dữ liệu và tam giác dẹt nằm ngoài đường bao đã cắt
+            b_loc = [[goc.vao(*q) for q in v] for v in bien if len(v) >= 3]
+            lt_loc = [[goc.vao(*q) for q in v] for v in loai_tru if len(v) >= 3]
+            trong_vung = lambda vt: (any(trong_da_giac(goc.vao(*vt), v) for v in b_loc)
+                                     and not any(trong_da_giac(goc.vao(*vt), v) for v in lt_loc))
+            bc.thieu_du_lieu = [x for x in bc.thieu_du_lieu if trong_vung(x["vi_tri"])]
+            bc.det_trong = [x for x in bc.det_trong if trong_vung(x["vi_tri"])]
         tin_ra[n] = tin
         thong_ke[n] = {k: getattr(bc, k) for k in
                        ("so_diem_vao", "so_diem", "so_gop", "lech_gop_max_m", "khoang_cach_tb_m",
                         "so_dut_gay", "so_doan_ep")}
         thong_ke[n].update({"so_tam_giac": len(tin.tris),
                             "so_tam_giac_rac_loai": len(bc.rac),
+                            "so_tam_giac_ngoai_bien_loai": so_ngoai_bien,
                             "so_tam_giac_det": len(bc.det_trong),
                             "so_tam_giac_thieu_du_lieu": len(bc.thieu_du_lieu),
                             "dien_tich_phu_m2": round(sum(tin.dien_tich_tam_giac(i)
                                                           for i in range(len(tin.tris))), 3)})
         phat_hien += phat_hien_be_mat(n, bc, bien, goc)
-        print(f"Mặt {n:3s}: {bc.so_diem_vao} điểm → {bc.so_diem} đỉnh, {len(tin.tris)} tam giác, "
-              f"{bc.so_doan_ep} đoạn đứt gãy ép, gộp {bc.so_gop} điểm trùng, "
+        print(f"Mặt {n:3s}: {bc.so_diem_vao} điểm → {bc.so_diem} đỉnh, {len(tin.tris)} tam giác"
+              + (f" (đã cắt bỏ {so_ngoai_bien} tam giác ngoài đường bao)" if so_ngoai_bien else "")
+              + f", {bc.so_doan_ep} đoạn đứt gãy ép, gộp {bc.so_gop} điểm trùng, "
               f"loại {len(bc.rac)} rác, {len(bc.det_trong)} dẹt, {len(bc.thieu_du_lieu)} thiếu dữ liệu")
     qc.danh_ma(phat_hien, "M")
     chan = [p for p in phat_hien if p["muc"] == "chan"]

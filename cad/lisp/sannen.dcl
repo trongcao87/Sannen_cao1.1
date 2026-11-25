@@ -262,6 +262,7 @@ sn_canhbao : dialog {
   : list_box { key = "l_ds"; width = 90; height = 14; multiple_select = false; }
   : text { key = "t_tt"; value = ""; width = 90; }
   : text { key = "t_tt2"; value = ""; width = 90; }
+  : text { key = "t_tt3"; value = ""; width = 90; }
   : row {
     : button { key = "b_zoom"; label = "Zoom toi"; is_default = true; width = 18; }
     : button { key = "b_lammoi"; label = "Lam moi"; width = 18; }

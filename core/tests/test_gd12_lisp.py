@@ -71,9 +71,12 @@ def test_lsp_can_bang_ngoac_va_nhay():
 
 
 def test_lsp_khong_trung_ten_ham():
-    ten = re.findall(r"^\(defun\s+([^\s(]+)", LSP.read_text(encoding="utf-8"), re.M)
+    ma = LSP.read_text(encoding="utf-8")
+    ten = re.findall(r"^\(defun\s+([^\s(]+)", ma, re.M)
     trung = sorted({t for t in ten if ten.count(t) > 1})
     assert not trung, f"Trùng (defun): {trung} — định nghĩa sau ghi đè định nghĩa trước mà không báo"
+    # AutoLISP KHÔNG có special form `let`/`let*` của Common Lisp (biến cục bộ khai sau `/` trong defun)
+    assert not re.search(r"\(\s*let\*?\s*\(", ma), "AutoLISP không có (let ...) — dùng biến cục bộ trong (defun ... / ...)"
 
 
 def test_lsp_co_du_lenh_bat_buoc():

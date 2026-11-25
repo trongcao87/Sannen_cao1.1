@@ -118,15 +118,40 @@ def goi_verb(verb: str, args: dict) -> tuple[str, bool]:
 
 
 def ghi_quyet_dinh(args: dict) -> tuple[str, bool]:
+    import yaml
     lot = _lot(args)
     if not args.get("ma_viec") or not args.get("lua_chon"):
         return "Cần ma_viec (vd V-01) và lua_chon (vd a).", True
+    ma_viec = str(args["ma_viec"]).strip()
+    lua_chon = str(args["lua_chon"]).strip().lower()
     luc = datetime.now().strftime("%Y-%m-%d %H:%M")
     lot.log_dir.mkdir(parents=True, exist_ok=True)
     with (lot.log_dir / "decisions.md").open("a", encoding="utf-8") as f:
-        f.write(f"- {luc} · {args['ma_viec']} → {args['lua_chon']}"
+        f.write(f"- {luc} · {ma_viec} → {lua_chon}"
                 f"{' — ' + args['ghi_chu'] if args.get('ghi_chu') else ''}\n")
-    return f"Đã ghi quyết định {args['ma_viec']} → {args['lua_chon']}.", False
+    # Nếu là việc V-.. (qc_input.json) và người chọn (b) loại bỏ điểm nghi vấn → ghi mã điểm vào nguon_tuy_chinh.yaml:bo_diem
+    them_tb = ""
+    qi_p = lot.process_dir / "qc_input.json"
+    if lua_chon == "b" and ma_viec.upper().startswith("V-") and qi_p.is_file():
+        qi = io_out.doc_json(qi_p)
+        for ph in qi.get("phat_hien", []):
+            if str(ph.get("ma", "")).upper() == ma_viec.upper():
+                import re
+                ids = re.findall(r"\b(?:MOC|DO)-\d+\b", str(ph.get("mo_ta", "")))
+                if ids:
+                    from .config import doc_lot
+                    cfg = doc_lot(lot.lot_yaml)
+                    bo_ds = [str(x) for x in (cfg.get("bo_diem") or [])]
+                    moi = [i for i in ids if i not in bo_ds]
+                    if moi:
+                        bo_ds.extend(moi)
+                        ntc_p = lot.root / "nguon_tuy_chinh.yaml"
+                        ntc = (yaml.safe_load(ntc_p.read_text(encoding="utf-8")) or {}) if ntc_p.exists() else {}
+                        ntc["bo_diem"] = bo_ds
+                        ntc_p.write_text("# Nguồn dữ liệu & quyết định lọc điểm từ Agent MCP / CAD — ghi đè lot.yaml.\n"
+                                         + yaml.safe_dump(ntc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+                        them_tb = f" (đã đưa {', '.join(moi)} vào danh sách bo_diem)"
+    return f"Đã ghi quyết định {ma_viec} → {lua_chon}{them_tb}.", False
 
 
 def trang_thai(args: dict) -> tuple[str, bool]:
@@ -248,6 +273,61 @@ def ra_soat_phuong_an_mcp(args: dict) -> tuple[str, bool]:
     return "\n\n".join(log_buoc), False
 
 
+def day_tin_cad_mcp(args: dict) -> tuple[str, bool]:
+    """Sau khi Agent đọc & kiểm soát dữ liệu đầu vào và người dùng duyệt Cổng 1:
+    dựng lưới tam giác TIN, xuất trình xem 3D Web HTML, sinh kế hoạch vẽ 3D Mesh và đẩy vào AutoCAD đang mở."""
+    import sys
+    lot = _lot(args)
+    preview = args.get("preview", True)
+    be_mat = args.get("be_mat") or "ca-hai"
+    ok, ly_do = kiem_cong(lot, "mat", preview)
+    if not ok:
+        return thong_bao_tu_choi("mat", ly_do), True
+    ma_mat, ra_mat = _chay_cli(["mat", "--lot", str(lot.root), "--be-mat", be_mat] + (["--preview"] if preview else []))
+    if ma_mat >= 2:
+        return _tra(ma_mat, ra_mat)
+    ra_lo = ""
+    if (lot.process_dir / "boundary.geojson").exists():
+        _, ra_lo = _chay_cli(["lo", "--lot", str(lot.root)] + (["--preview"] if preview else []))
+    if preview:
+        return _tra(ma_mat, ra_mat + "\n" + ra_lo,
+                    "\n→ Xem trước dựng TIN xong. Gọi lại với preview=false (sau khi Cổng 1 đã duyệt) để tạo TIN, 3D Mesh, HTML 3D View và đẩy vào AutoCAD đang mở.")
+    _, ra_html = _chay_cli(["xem3d", "--lot", str(lot.root)])
+    cad_dir = Path(__file__).resolve().parents[2] / "cad"
+    if str(cad_dir) not in sys.path and cad_dir.is_dir():
+        sys.path.insert(0, str(cad_dir))
+    from sannen_cad import ke_hoach as _kh
+    kh = _kh.tao_ke_hoach_tin3d(lot.root, be_mat, "polyface")
+    dest = lot.output_dir / "ke_hoach_tin3d.json"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(_kh.ghi_json(kh))
+    # Thử kích hoạt lệnh SN_NAP_TU_MCP trên AutoCAD đang mở qua COM (nếu AutoCAD đang chạy trên cùng máy)
+    da_day_cad = False
+    tb_cad = "Người dùng có thể bấm nút «Nhận & Tạo TIN từ Agent (MCP)» trên tab QL ĐH (hoặc gõ SN_NAP_TU_MCP trong AutoCAD) để hiển thị ngay."
+    try:
+        import subprocess
+        ps_cmd = (
+            "try { $acad = [Runtime.InteropServices.Marshal]::GetActiveObject('AutoCAD.Application'); "
+            "if ($acad -and $acad.ActiveDocument) { $acad.ActiveDocument.SendCommand('SN_NAP_TU_MCP '); Write-Output 'OK_CAD' } } catch {}"
+        )
+        r = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True, timeout=4)
+        if "OK_CAD" in (r.stdout or ""):
+            da_day_cad = True
+            tb_cad = "Đã tự động đẩy lệnh SN_NAP_TU_MCP vào cửa sổ AutoCAD đang mở để dựng TIN & vẽ 3D Mesh!"
+    except Exception:
+        pass
+    out = {
+        "be_mat": be_mat,
+        "da_day_vao_autocad": da_day_cad,
+        "thong_bao_cad": tb_cad,
+        "html_3d": str(lot.output_dir / "tin3d_view.html"),
+        "ke_hoach_3d_mesh": str(dest),
+        "tom_tat_3d": kh["tom_tat"],
+        "ket_qua_mat": ra_mat.strip(),
+    }
+    return json.dumps(out, ensure_ascii=False, indent=1), False
+
+
 def ve_mcp(args: dict) -> tuple[str, bool]:
     """Dựng kế hoạch vẽ JSON theo ý định (ve | tin3d | mat-cat | bang). Mặc định preview=true không ghi file."""
     import sys
@@ -351,6 +431,12 @@ def danh_sach_cong_cu() -> list[CongCu]:
                        "ten": _p("tên mặt cắt (cho mat-cat)"),
                        "loai": _p("tong | tong-hop | o (cho bang)", enum=["tong", "tong-hop", "o"]),
                        "ke_hoach": _p("đường dẫn file JSON đầu ra khi preview=false")}, ["lot"]), ve_mcp),
+        CongCu("sannen_day_tin_cad",
+               "Sau khi Agent đọc & kiểm soát dữ liệu đầu vào (sannen_nhap) và người dùng duyệt Cổng 1: "
+               "dựng lưới tam giác TIN, tạo 3D Mesh (SN-3DF-MOC/DO), xuất trình xem 3D Web HTML (tin3d_view.html) "
+               "và đẩy trực tiếp vào bản vẽ AutoCAD đang mở thông qua lệnh SN_NAP_TU_MCP.",
+               schema({"lot": LOT, "preview": PREVIEW,
+                       "be_mat": _p("moc | do | ca-hai (mặc định ca-hai)", enum=["moc", "do", "ca-hai"])}, ["lot"]), day_tin_cad_mcp),
     ]
 
 

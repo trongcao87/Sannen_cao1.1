@@ -1,4 +1,4 @@
-// Tab "Lưới": thông số lưới hiện tại + ô nhập Cột / Hàng / Bù dữ liệu. Các nút GHI chỉ gọi lệnh LISP có sẵn
+﻿// Tab "Lưới": thông số lưới hiện tại + ô nhập Cột / Hàng / Bù dữ liệu. Các nút GHI chỉ gọi lệnh LISP có sẵn
 // (SN_LUOIAPDUNG, SN_DICHLUOI, SN_XOAYLUOI, SN_LUOI, SN_VE) để vẫn xin xác nhận (RULES 4); palette KHÔNG tự ghi file lô.
 // Kích thước ô / gốc / góc / cách bù thiếu là QUYẾT ĐỊNH của người (RULES 9) — palette chỉ chuyển giá trị người gõ.
 using System;

@@ -265,10 +265,14 @@ def l_tin3d(a, lot):
     chon = {"moc": ["moc"], "do": ["do"], "ca-hai": ["moc", "do"]}.get(a.be_mat)
     if chon is None:
         raise Loi("--be-mat phải là moc, do hoặc ca-hai")
-    try:
-        nc = ve.ngu_canh(lot.root)
-    except FileNotFoundError as e:
-        raise Loi(str(e))
+    ps = lot.process_dir
+    for n in chon:
+        if not (ps / f"surface_{n}.json").exists():
+            raise Loi(f"Chưa có surface_{n}.json — chạy Tạo TIN cho bề mặt {n.upper()} trước")
+    cfg = doc_lot(lot.lot_yaml)
+    s0 = io_out.doc_json(ps / f"surface_{chon[0]}.json")
+    hash_tv = str((s0.get("sinh_tu") or {}).get("hash_dau_vao") or "")[:16]
+    nc = {"lot": lot, "ps": ps, "ma_lo": str(cfg["ma_lo"]), "dot": int(cfg["dot"]), "hash_tv": hash_tv}
     be = BackendLisp()
     be.cad_purge_sn(nc["ma_lo"], nc["dot"], xem_truoc=False, loai=("mat_3d", "qc"))     # xóa hai mặt cũ rồi vẽ lại đúng cái chọn
     dang = _dang(a)
@@ -561,13 +565,30 @@ def l_bang(a, lot):
 
 
 def l_xem3d(a, lot):
-    """Sinh trình xem 3D HTML (verb `xem3d` của lõi) và mở bằng trình duyệt mặc định."""
+    """Sinh trình xem 3D HTML (verb `xem3d` của lõi) và mở bằng trình duyệt mặc định.
+    Nếu chưa có surface_moc.json / surface_do.json nhưng đã có dữ liệu điểm thì tự động chạy nhap/mat để tạo bề mặt TIN trước."""
+    ps = lot.process_dir
+    if not (ps / "surface_moc.json").exists() and not (ps / "surface_do.json").exists():
+        if not (ps / "points_moc.csv").exists() and not (ps / "points_do.csv").exists():
+            _cli(lot, "nhap", "--xac-nhan-anh-xa")
+        co_diem = any(
+            (ps / f"points_{n}.csv").is_file() and sum(1 for _ in (ps / f"points_{n}.csv").open(encoding="utf-8")) > 3
+            for n in ("moc", "do")
+        )
+        if co_diem:
+            ok_c1, _ = cong.cong_da_duyet(lot, 1)
+            if not ok_c1 and not cong.viec_chan(lot, 1):
+                cong.duyet_cong({"lot": str(lot.root), "cong": 1, "nguoi_duyet": "Người dùng CAD",
+                                 "bang_chung": "Người dùng bấm Tạo & Xem 3D HTML trong AutoCAD"})
+            _cli(lot, "mat", "--be-mat", "ca-hai")
     ma, ra = _cli(lot, "xem3d", "--mo")
     dong = [d.strip() for d in ra.splitlines() if d.strip()]
     if ma != 0:
         raise Loi("Không dựng được trình xem 3D: " + (" ".join(dong[-3:]) if dong else
                                                       f"verb xem3d báo mã thoát {ma} (lõi chưa có verb này hoặc tham số sai)"))
     file = next((d for d in reversed(dong) if d.lower().endswith(".html")), dong[-1] if dong else "")
+    if file.startswith("Đã tạo trình xem 3D:"):
+        file = file.split("Đã tạo trình xem 3D:", 1)[1].strip()
     return {"file": file}, f"Đã mở trình xem 3D: {file}"
 
 
@@ -660,13 +681,33 @@ def l_o_tai(a, lot):
             "thieu_du_lieu": bool(o_g["thieu_du_lieu"]) if o_g else False}, ""
 
 
+def _ntc_mac_dinh_trong() -> dict:
+    """Khi người dùng làm việc trên AutoCAD (hoặc vừa bấm Làm mới): khởi tạo nguồn trống để KHÔNG tự động nạp dữ liệu ví dụ của lot.yaml."""
+    return {
+        "be_mat_moc": {"nguon": "chua_khai_bao"},
+        "be_mat_do": {"nguon": "chua_khai_bao"},
+        "bien_lo": {"nguon": "chua_khai_bao"},
+        "dut_gay": {"nguon": "chua_khai_bao"},
+        "bo_diem": [],
+    }
+
+
 def l_khoi_tao_be_mat(a, lot):
     """Nhận cấu hình khởi tạo thủ công từ CAD/Excel (điểm mốc/đo, breakline, biên lô), ghi nguon_tuy_chinh.yaml,
     chạy nhap + mat + lo để khởi tạo bề mặt TIN và chuẩn hóa biên lô."""
     import shutil
     from datetime import datetime
     ntc_p = lot.root / "nguon_tuy_chinh.yaml"
-    ntc = (yaml.safe_load(ntc_p.read_text(encoding="utf-8")) or {}) if ntc_p.exists() else {}
+    co_file_tuy_chinh = any(getattr(a, k, None) for k in ("file_moc", "file_do", "file_dut_gay", "file_bien_lo", "file_loai_tru"))
+    if ntc_p.exists():
+        ntc = yaml.safe_load(ntc_p.read_text(encoding="utf-8")) or {}
+    elif co_file_tuy_chinh:
+        ntc = _ntc_mac_dinh_trong()
+    else:
+        ntc = {}
+    if co_file_tuy_chinh:
+        for k_m, v_m in _ntc_mac_dinh_trong().items():
+            ntc.setdefault(k_m, v_m)
     lot.process_dir.mkdir(parents=True, exist_ok=True)
 
     for nhan in ("moc", "do"):
@@ -772,6 +813,22 @@ def l_khoi_tao_be_mat(a, lot):
                                  "bang_chung": "Người dùng chọn biên lô thủ công trong AutoCAD"})
             if cong.cong_da_duyet(lot, 1)[0]:
                 _, ra_lo_nhanh = _cli(lot, "lo")
+                # Nếu đã có bề mặt TIN trước đó thì tự động cắt/dựng lại TIN theo phạm vi đường bao vừa chọn
+                ps = lot.process_dir
+                co_moc, co_do = (ps / "surface_moc.json").exists(), (ps / "surface_do.json").exists()
+                if co_moc or co_do:
+                    bm_cat = "ca-hai" if (co_moc and co_do) else ("moc" if co_moc else "do")
+                    _cli(lot, "mat", "--be-mat", bm_cat)
+                    if a.lsp:
+                        _ve_3d_va_nguon(lot, Path(a.lsp), bm_cat, _dang(a), ve_nguon=False)
+        if a.lsp and (getattr(a, "file_moc", None) or getattr(a, "file_do", None)):
+            chon_bm = []
+            if getattr(a, "file_moc", None) and getattr(a, "nguon_moc", None) not in ("cad_chon", "csv_diem"):
+                chon_bm.append("moc")
+            if getattr(a, "file_do", None) and getattr(a, "nguon_do", None) not in ("cad_chon", "csv_diem"):
+                chon_bm.append("do")
+            if chon_bm:
+                _ve_diem_nguon_cad(lot, Path(a.lsp), chon_bm)
         return {"ma_thoat": ma_nhap, "van_ban": (ra_nhap + "\n" + ra_lo_nhanh).strip(), "nguon": ntc}, "Đã nạp dữ liệu đầu vào"
 
     # Người chủ động bấm "Khởi tạo bề mặt" trong CAD → nếu cổng 1 chưa duyệt và không có việc chặn ở cổng 1,
@@ -831,6 +888,8 @@ def l_xoa_du_lieu_cu(a, lot):
     for d in (lot.process_dir, lot.output_dir):
         if d.is_dir():
             for p in sorted(d.iterdir()):
+                if p.name == ".gitkeep":
+                    continue
                 if p.is_file():
                     p.unlink()
                     da_xoa.append(p.name)
@@ -843,11 +902,436 @@ def l_xoa_du_lieu_cu(a, lot):
     if cong_p.is_file():
         cong_p.unlink()
         da_xoa.append("cong.json")
+    # Ghi nguon_tuy_chinh.yaml ở trạng thái "chua_khai_bao" để khi người dùng khai báo mới trên CAD sẽ KHÔNG bị dính dữ liệu mẫu từ lot.yaml
+    ntc_p = lot.root / "nguon_tuy_chinh.yaml"
+    ntc_p.write_text("# Nguồn dữ liệu phiên làm việc CAD mới (trống cho tới khi người dùng chọn dữ liệu trên CAD/Excel).\n"
+                     + yaml.safe_dump(_ntc_mac_dinh_trong(), allow_unicode=True, sort_keys=False), encoding="utf-8")
     lot.log_dir.mkdir(parents=True, exist_ok=True)
     luc = datetime.now().strftime("%Y-%m-%d %H:%M")
     with (lot.log_dir / "decisions.md").open("a", encoding="utf-8") as f:
         f.write(f"- {luc} · lam-moi (CAD) · Xóa dữ liệu xử lý cũ ({len(da_xoa)} file) để khởi tạo lại từ đầu\n")
     return {"so_file_xoa": len(da_xoa), "da_xoa": da_xoa}, f"Đã xóa {len(da_xoa)} file dữ liệu cũ — lô đã sạch để khởi tạo mới"
+
+
+def _ve_diem_nguon_cad(lot: Lot, lsp_p: Path, chon: list[str], be: BackendLisp | None = None) -> dict:
+    """Chèn trực quan toàn bộ điểm đã import từ Excel/CSV/DXF (và đường bao/breakline từ DXF nếu có) vào vùng CAD đang mở
+    để người dùng kiểm tra ngay bằng mắt trên bản vẽ."""
+    import csv as _csv
+    cfg = doc_lot(lot.lot_yaml)
+    ma_lo, dot = str(cfg["ma_lo"]), int(cfg["dot"])
+    ps = lot.process_dir
+    qi = io_out.doc_json(ps / "qc_input.json") if (ps / "qc_input.json").is_file() else {}
+    hash_tv = str(qi.get("hash_dau_vao") or "import")[:16]
+    luu_rieng = be is None
+    if be is None:
+        be = BackendLisp()
+    min_e, min_n, max_e, max_n = 1e30, 1e30, -1e30, -1e30
+    so_diem_ve = 0
+    for n in chon:
+        lop_d = "SN-DIEM-MOC" if n == "moc" else "SN-DIEM-DO"
+        mau_d = 3 if n == "moc" else 2
+        p_csv = ps / f"points_{n}.csv"
+        if not p_csv.is_file():
+            continue
+        ent_d = []
+        with p_csv.open(encoding="utf-8", newline="") as f:
+            for r in _csv.DictReader(f):
+                e_v, n_v, z_v = float(r["easting"]), float(r["northing"]), float(r["z"])
+                min_e, max_e = min(min_e, e_v), max(max_e, e_v)
+                min_n, max_n = min(min_n, n_v), max(max_n, n_v)
+                ent_d.append(("point", e_v, n_v, z_v, mau_d))
+                ent_d.append(("text3d", f"{z_v:.2f}", e_v + 0.35, n_v + 0.15, z_v, 0.7, mau_d))
+                so_diem_ve += 1
+        if ent_d:
+            be._lop_da_khai.add(lop_d)
+            be.dong.append(f"(snv:lop \"{lop_d}\" {mau_d} nil)")
+            be.dong.append(f"(snv:bat \"{lop_d}\" T)")
+            be.cad_purge_sn(ma_lo, dot, xem_truoc=False, loai=(f"diem_{n}",))
+            be.ve_ent(ma_lo, dot, hash_tv, f"diem_{n}", lop_d, ent_d, False)
+    p_dg = ps / "breaklines.geojson"
+    if p_dg.is_file():
+        feats = json.loads(p_dg.read_text(encoding="utf-8")).get("features", [])
+        ent_dg = []
+        for ft in feats:
+            coords = ft.get("geometry", {}).get("coordinates", [])
+            if len(coords) >= 2:
+                ent_dg.append(("pl", [(c[0], c[1]) for c in coords], False, 1))
+        if ent_dg:
+            be._lop_da_khai.add("SN-DUTGAY")
+            be.dong.append("(snv:lop \"SN-DUTGAY\" 1 nil)")
+            be.dong.append("(snv:bat \"SN-DUTGAY\" T)")
+            be.cad_purge_sn(ma_lo, dot, xem_truoc=False, loai=("dut_gay_mcp",))
+            be.ve_ent(ma_lo, dot, hash_tv, "dut_gay_mcp", "SN-DUTGAY", ent_dg, False)
+    p_bien = ps / "boundary.geojson"
+    if p_bien.is_file():
+        feats = json.loads(p_bien.read_text(encoding="utf-8")).get("features", [])
+        ent_b = []
+        for ft in feats:
+            coords = (ft.get("geometry", {}).get("coordinates") or [[]])[0]
+            if len(coords) >= 3:
+                pts = [(c[0], c[1]) for c in coords]
+                if len(pts) > 1 and pts[0] == pts[-1]:
+                    pts = pts[:-1]
+                for px, py in pts:
+                    min_e, max_e = min(min_e, px), max(max_e, px)
+                    min_n, max_n = min(min_n, py), max(max_n, py)
+                ent_b.append(("pl", pts, True, 5))
+        if ent_b:
+            be._lop_da_khai.add("SN-BIENLO")
+            be.dong.append("(snv:lop \"SN-BIENLO\" 5 nil)")
+            be.dong.append("(snv:bat \"SN-BIENLO\" T)")
+            be.cad_purge_sn(ma_lo, dot, xem_truoc=False, loai=("bien_lo_mcp",))
+            be.ve_ent(ma_lo, dot, hash_tv, "bien_lo_mcp", "SN-BIENLO", ent_b, False)
+    if luu_rieng:
+        if min_e <= max_e and min_n <= max_n:
+            pad_x = max((max_e - min_e) * 0.1, 10.0)
+            pad_y = max((max_n - min_n) * 0.1, 10.0)
+            be.dong.append(
+                f"(vl-catch-all-apply '(lambda () (command \"_.ZOOM\" \"_W\" "
+                f"(list {min_e - pad_x:.3f} {min_n - pad_y:.3f}) (list {max_e + pad_x:.3f} {max_n + pad_y:.3f}))) nil)"
+            )
+        be.luu(lsp_p)
+    return {"so_diem_ve": so_diem_ve}
+
+
+def _ve_mat_3d_cat_bien(lot: Lot, be, nc: dict, chon: list[str], dang: str = "polyface") -> dict:
+    """Khi vẽ mặt 3D trên CAD hoặc tạo kế hoạch 3D: nếu lô có đường bao (boundary.geojson) thì chỉ vẽ các tam giác
+    nằm trong phạm vi đường bao (và ngoài vùng loại trừ) để lưới tam giác trên CAD không tràn ra ngoài đường bao."""
+    from sannen.mat import vong_ngoai, vong_loai_tru, cat_tin_theo_bien
+    from sannen.tin import Tin
+    bien = vong_ngoai(lot)
+    lt = vong_loai_tru(lot)
+    if not bien:
+        return ve.ve_mat_3d(be, nc, chon, dang=dang)
+    kq: dict[str, dict] = {}
+    for nhan in chon:
+        s = io_out.doc_json(nc["ps"] / f"surface_{nhan}.json")
+        tin = Tin.from_dict(s)
+        cat_tin_theo_bien(tin, bien, lt)
+        d = s["diem"]
+        tot = [[d[a], d[b], d[c]] for (a, b, c), l in zip(tin.tris, tin.loai) if l == 0]
+        xau = [[d[a], d[b], d[c]] for (a, b, c), l in zip(tin.tris, tin.loai) if l != 0]
+        kq[f"mat_{nhan}"] = be.cad_draw_3dface(nc["ma_lo"], nc["dot"], nc["hash_tv"], nhan, tot, "mat", xem_truoc=False, dang=dang)
+        if xau:
+            kq[f"qc_{nhan}"] = be.cad_draw_3dface(nc["ma_lo"], nc["dot"], nc["hash_tv"], nhan, xau, "qc", xem_truoc=False, dang=dang)
+    return kq
+
+
+def _ve_3d_va_nguon(lot: Lot, lsp_p: Path, be_mat: str = "ca-hai", dang: str = "polyface", ve_nguon: bool = False) -> dict:
+    """Vẽ mặt 3D Mesh (cắt theo phạm vi đường bao nếu có, và tùy chọn vẽ các điểm nguồn/đứt gãy từ 10_process lên CAD)."""
+    cfg = doc_lot(lot.lot_yaml)
+    ma_lo, dot = str(cfg["ma_lo"]), int(cfg["dot"])
+    ps = lot.process_dir
+    chon = ["moc", "do"] if be_mat == "ca-hai" else [be_mat]
+    for n in chon:
+        if not (ps / f"surface_{n}.json").exists():
+            raise Loi(f"Chưa có surface_{n}.json — cần tạo TIN trước")
+    s0 = io_out.doc_json(ps / f"surface_{chon[0]}.json")
+    hash_tv = str((s0.get("sinh_tu") or {}).get("hash_dau_vao") or "")[:16]
+    nc = {"lot": lot, "ps": ps, "ma_lo": ma_lo, "dot": dot, "hash_tv": hash_tv}
+    be = BackendLisp()
+    be.cad_purge_sn(ma_lo, dot, xem_truoc=False, loai=("mat_3d", "qc"))
+    kq = _ve_mat_3d_cat_bien(lot, be, nc, chon, dang=dang)
+    if ve_nguon:
+        _ve_diem_nguon_cad(lot, lsp_p, chon, be=be)
+    be.bat_lop("SN-3DF-MOC", dot, "moc" in chon)
+    be.bat_lop("SN-3DF-DO", dot, "do" in chon)
+    be.bat_lop("SN-QC", dot, True)
+    be.luu(lsp_p)
+    return _dem(kq)
+
+
+def l_tin_sua(a, lot):
+    """Hiệu chỉnh mô hình TIN (MHTN/MHTK):
+      --lenh lat-canh  --be-mat moc|do --e E --n N
+      --lenh xoa-diem  --be-mat moc|do --e E --n N
+      --lenh them-diem --be-mat moc|do --e E --n N --z Z
+      --lenh xoa-tam-giac --be-mat moc|do --e E --n N
+      --lenh tao-lai   --be-mat moc|do|ca-hai
+    """
+    from sannen.geom import orient2d
+    lenh = a.lenh_sua
+    if lenh not in ("lat-canh", "xoa-diem", "them-diem", "xoa-tam-giac", "tao-lai"):
+        raise Loi("--lenh phải là lat-canh, xoa-diem, them-diem, xoa-tam-giac hoặc tao-lai")
+    bm = a.be_mat or "moc"
+    if lenh != "tao-lai" and bm not in ("moc", "do"):
+        raise Loi("--be-mat phải là moc hoặc do")
+    ps = lot.process_dir
+    lot.log_dir.mkdir(parents=True, exist_ok=True)
+    luc = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    if lenh in ("lat-canh", "xoa-tam-giac"):
+        sp = ps / f"surface_{bm}.json"
+        if not sp.exists():
+            raise Loi(f"Chưa có surface_{bm}.json — hãy Tạo TIN cho bề mặt {bm.upper()} trước")
+        sd = io_out.doc_json(sp)
+        diem = sd["diem"]
+        tris = [list(t) for t in sd["tam_giac"]]
+        loai = list(sd.get("loai_tam_giac") or [0] * len(tris))
+        rb = {tuple(sorted(e_)) for e_ in sd.get("canh_rang_buoc", [])}
+
+        if lenh == "xoa-tam-giac":
+            from sannen.geom import cat_hcn, dien_tich_co_dau, giao_doan, trong_da_giac
+            xoa_idx: set[int] = set()
+            mo_ta_log = ""
+            if getattr(a, "a", None) and getattr(a, "b", None):
+                e1, n1 = _en(a.a, "--a")
+                e2, n2 = _en(a.b, "--b")
+                kieu_q = (getattr(a, "kieu", None) or "crossing").lower()
+                if kieu_q == "fence":
+                    p1, p2 = (e1, n1), (e2, n2)
+                    for idx, (u, v, w) in enumerate(tris):
+                        pa, pb, pc = (diem[u][0], diem[u][1]), (diem[v][0], diem[v][1]), (diem[w][0], diem[w][1])
+                        tri = [pa, pb, pc]
+                        if (trong_da_giac(p1, tri) or trong_da_giac(p2, tri)
+                                or giao_doan(p1, p2, pa, pb) is not None
+                                or giao_doan(p1, p2, pb, pc) is not None
+                                or giao_doan(p1, p2, pc, pa) is not None):
+                            xoa_idx.add(idx)
+                    mo_ta_log = f"đường cắt ({e1:.2f},{n1:.2f})→({e2:.2f},{n2:.2f})"
+                else:
+                    x0, x1 = min(e1, e2), max(e1, e2)
+                    y0, y1 = min(n1, n2), max(n1, n2)
+                    la_window = (kieu_q == "window") or (not getattr(a, "kieu", None) and e2 >= e1)
+                    for idx, (u, v, w) in enumerate(tris):
+                        pa, pb, pc = (diem[u][0], diem[u][1]), (diem[v][0], diem[v][1]), (diem[w][0], diem[w][1])
+                        if la_window:
+                            if all(x0 <= px <= x1 and y0 <= py <= y1 for px, py in (pa, pb, pc)):
+                                xoa_idx.add(idx)
+                        else:
+                            tri = [pa, pb, pc]
+                            if dien_tich_co_dau(tri) < 0:
+                                tri = tri[::-1]
+                            if abs(dien_tich_co_dau(cat_hcn(tri, x0, y0, x1, y1))) > 1e-9:
+                                xoa_idx.add(idx)
+                    mo_ta_log = f"quét vùng ({x0:.2f},{y0:.2f})..({x1:.2f},{y1:.2f})"
+            elif a.e is not None and a.n is not None:
+                pe, pn = float(a.e), float(a.n)
+                best_i, best_d = None, 1e30
+                for idx, (u, v, w) in enumerate(tris):
+                    pa, pb, pc = (diem[u][0], diem[u][1]), (diem[v][0], diem[v][1]), (diem[w][0], diem[w][1])
+                    if orient2d(pa, pb, (pe, pn)) >= -1e-6 and orient2d(pb, pc, (pe, pn)) >= -1e-6 and orient2d(pc, pa, (pe, pn)) >= -1e-6:
+                        best_i, best_d = idx, 0.0
+                        break
+                    cx, cy = (pa[0] + pb[0] + pc[0]) / 3.0, (pa[1] + pb[1] + pc[1]) / 3.0
+                    d_c = math.hypot(cx - pe, cy - pn)
+                    if d_c < best_d:
+                        best_i, best_d = idx, d_c
+                if best_i is not None:
+                    xoa_idx.add(best_i)
+                mo_ta_log = f"tại ({pe:.3f}, {pn:.3f})"
+            else:
+                raise Loi("Cần --e E --n N (pick điểm) hoặc --a E1,N1 --b E2,N2 (quét vùng chọn nhiều tam giác)")
+            if not xoa_idx:
+                raise Loi("Không có tam giác nào trong vùng quét chọn để xóa")
+            if len(xoa_idx) >= len(tris):
+                raise Loi("Không thể xóa toàn bộ tam giác của bề mặt TIN (cần giữ lại ít nhất 1 tam giác)")
+            so_xoa = len(xoa_idx)
+            sd["tam_giac"] = [t for i, t in enumerate(tris) if i not in xoa_idx]
+            sd["loai_tam_giac"] = [l for i, l in enumerate(loai) if i not in xoa_idx]
+            sd.setdefault("thong_ke", {})["so_tam_giac"] = len(sd["tam_giac"])
+            io_out.ghi_json(lot, f"surface_{bm}.json", sd)
+            with (lot.log_dir / "decisions.md").open("a", encoding="utf-8") as f:
+                f.write(f"- {luc} · xoa-tam-giac ({bm.upper()}) · Xóa {so_xoa} tam giác ({mo_ta_log})\n")
+            if a.lsp:
+                _ve_3d_va_nguon(lot, Path(a.lsp), bm, _dang(a))
+            return {"be_mat": bm, "so_xoa": so_xoa, "so_tam_giac": len(sd["tam_giac"])}, \
+                f"Đã xóa {so_xoa} tam giác khỏi {bm.upper()} (còn {len(sd['tam_giac'])} tam giác)"
+
+        if a.e is None or a.n is None:
+            raise Loi("Cần --e E --n N (tọa độ điểm click trên bản vẽ)")
+        pe, pn = float(a.e), float(a.n)
+
+        # lenh == "lat-canh": tìm cạnh nội bộ (chia sẻ bởi đúng 2 tam giác) gần điểm (pe, pn) nhất
+        canh_map: dict[tuple[int, int], list[int]] = {}
+        for idx, (u, v, w) in enumerate(tris):
+            for e1, e2 in ((u, v), (v, w), (w, u)):
+                k = (e1, e2) if e1 < e2 else (e2, e1)
+                canh_map.setdefault(k, []).append(idx)
+        best_k, best_dist = None, 1e30
+        for (u, v), ds_t in canh_map.items():
+            if len(ds_t) != 2:
+                continue
+            ax, ay = diem[u][0], diem[u][1]
+            bx, by = diem[v][0], diem[v][1]
+            dx, dy = bx - ax, by - ay
+            l2 = dx * dx + dy * dy
+            t = 0.0 if l2 == 0 else max(0.0, min(1.0, ((pe - ax) * dx + (pn - ay) * dy) / l2))
+            qx, qy = ax + t * dx, ay + t * dy
+            dist = math.hypot(pe - qx, pn - qy)
+            if dist < best_dist:
+                best_k, best_dist = (u, v), dist
+        if best_k is None:
+            raise Loi("Không tìm thấy cạnh chung của 2 tam giác để lật")
+        if best_k in rb:
+            raise Loi("Cạnh này là đường đứt gãy cưỡng bức (Breakline) — không được phép lật!")
+        t1, t2 = canh_map[best_k]
+        u, v = best_k
+        c1 = next(x for x in tris[t1] if x != u and x != v)
+        c2 = next(x for x in tris[t2] if x != u and x != v)
+        p_u, p_v = (diem[u][0], diem[u][1]), (diem[v][0], diem[v][1])
+        p_c1, p_c2 = (diem[c1][0], diem[c1][1]), (diem[c2][0], diem[c2][1])
+        if not (orient2d(p_c1, p_c2, p_u) * orient2d(p_c1, p_c2, p_v) < 0 and orient2d(p_u, p_v, p_c1) * orient2d(p_u, p_v, p_c2) < 0):
+            raise Loi("Tứ giác chứa cạnh này bị lõm — lật cạnh sẽ làm hai tam giác chồng đè lên nhau!")
+        # Tạo 2 tam giác mới (c1, c2, u) và (c2, c1, v) đảm bảo ngược chiều kim đồng hồ (orient2d > 0)
+        nt1 = [c1, c2, u] if orient2d(p_c1, p_c2, p_u) > 0 else [c2, c1, u]
+        nt2 = [c2, c1, v] if orient2d(p_c2, p_c1, p_v) > 0 else [c1, c2, v]
+        tris[t1], tris[t2] = nt1, nt2
+        sd["tam_giac"] = tris
+        io_out.ghi_json(lot, f"surface_{bm}.json", sd)
+        with (lot.log_dir / "decisions.md").open("a", encoding="utf-8") as f:
+            f.write(f"- {luc} · lat-canh ({bm.upper()}) · Lật cạnh ({u}-{v}) → ({c1}-{c2}) tại ({pe:.3f}, {pn:.3f})\n")
+        if a.lsp:
+            _ve_3d_va_nguon(lot, Path(a.lsp), bm, _dang(a))
+        return {"be_mat": bm, "canh_cu": list(best_k), "canh_moi": [c1, c2]}, \
+            f"Đã lật cạnh tam giác trên {bm.upper()} từ đỉnh ({u}–{v}) sang ({c1}–{c2})"
+
+    ntc_p = lot.root / "nguon_tuy_chinh.yaml"
+    ntc = (yaml.safe_load(ntc_p.read_text(encoding="utf-8")) or {}) if ntc_p.exists() else _ntc_mac_dinh_trong()
+    for k_m, v_m in _ntc_mac_dinh_trong().items():
+        ntc.setdefault(k_m, v_m)
+    if not ntc_p.exists():
+        ntc_p.write_text("# Nguồn dữ liệu phiên làm việc CAD (không dùng dữ liệu mẫu từ lot.yaml).\n"
+                         + yaml.safe_dump(ntc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    cfg_goc = doc_lot(lot.lot_yaml)
+
+    if lenh == "xoa-diem":
+        if a.e is None or a.n is None:
+            raise Loi("Cần --e E --n N (tọa độ điểm cần xóa)")
+        p_csv = ps / f"points_{bm}.csv"
+        if not p_csv.is_file():
+            raise Loi(f"Chưa có points_{bm}.csv — chạy nhập dữ liệu trước")
+        import csv as _csv
+        pe, pn = float(a.e), float(a.n)
+        best_id, best_z, best_d = None, 0.0, 1e30
+        with p_csv.open(encoding="utf-8", newline="") as f:
+            for r in _csv.DictReader(f):
+                d_p = math.hypot(float(r["easting"]) - pe, float(r["northing"]) - pn)
+                if d_p < best_d:
+                    best_id, best_z, best_d = r["id"], float(r["z"]), d_p
+        if best_id is None:
+            raise Loi(f"Bề mặt {bm.upper()} không có điểm nào để xóa")
+        bo_ds = [str(x) for x in (cfg_goc.get("bo_diem") or [])]
+        if best_id not in bo_ds:
+            bo_ds.append(best_id)
+        ntc["bo_diem"] = bo_ds
+        # Nếu là điểm từng thêm tay trong them_diem thì loại luôn
+        if isinstance(ntc.get("them_diem"), dict) and bm in ntc["them_diem"]:
+            ntc["them_diem"][bm] = [x for x in ntc["them_diem"][bm] if str(x.get("id")) != best_id]
+        ntc_p.write_text("# Nguồn dữ liệu & hiệu chỉnh điểm do NGƯỜI chọn từ AutoCAD — ghi đè lot.yaml.\n"
+                         + yaml.safe_dump(ntc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        with (lot.log_dir / "decisions.md").open("a", encoding="utf-8") as f:
+            f.write(f"- {luc} · xoa-diem ({bm.upper()}) · Loại bỏ điểm {best_id} (Z={best_z:.3f} m, cách điểm chọn {best_d:.2f} m)\n")
+        thong_bao_sua = f"Đã loại bỏ điểm {best_id} (Z={best_z:.3f} m) khỏi {bm.upper()} và tạo lại lưới TIN"
+
+    elif lenh == "them-diem":
+        if a.e is None or a.n is None or a.z is None:
+            raise Loi("Cần --e E --n N --z Z (tọa độ và cao độ điểm thêm vào TIN)")
+        pe, pn, pz = float(a.e), float(a.n), float(a.z)
+        td = ntc.get("them_diem")
+        if not isinstance(td, dict):
+            td = {}
+        ds_bm = list(td.get(bm) or [])
+        ma_moi = f"THEM-{bm.upper()}-{len(ds_bm)+1:04d}"
+        ds_bm.append({"id": ma_moi, "e": round(pe, 4), "n": round(pn, 4), "z": round(pz, 4), "code": "cad_them"})
+        td[bm] = ds_bm
+        ntc["them_diem"] = td
+        ntc_p.write_text("# Nguồn dữ liệu & hiệu chỉnh điểm do NGƯỜI chọn từ AutoCAD — ghi đè lot.yaml.\n"
+                         + yaml.safe_dump(ntc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        with (lot.log_dir / "decisions.md").open("a", encoding="utf-8") as f:
+            f.write(f"- {luc} · them-diem ({bm.upper()}) · Thêm điểm {ma_moi} ({pe:.3f}, {pn:.3f}, Z={pz:.3f} m)\n")
+        thong_bao_sua = f"Đã thêm điểm {ma_moi} (Z={pz:.3f} m) vào {bm.upper()} và tạo lại lưới TIN"
+
+    else:
+        thong_bao_sua = f"Đã tạo lại lưới tam giác TIN ({bm})"
+
+    bm_chay = bm if bm in ("moc", "do") else "ca-hai"
+    # Dự phòng thông minh: nếu nguon_tuy_chinh.yaml của bề mặt đang là chua_khai_bao nhưng người dùng vừa chọn/import file trong 10_process/ hoặc %TEMP%
+    ds_check = ("moc", "do") if bm_chay == "ca-hai" else (bm_chay,)
+    da_khoi_phuc = False
+    for nb in ds_check:
+        b_cfg = ntc.get(f"be_mat_{nb}") or {}
+        if b_cfg.get("nguon") in (None, "chua_khai_bao", "trong", "none"):
+            for cand_p, cand_ng in (
+                (ps / f"cad_chon_{nb}.csv", {"nguon": "cad_chon", "file": f"10_process/cad_chon_{nb}.csv"}),
+                (ps / f"dxf_{nb}.dxf", {"nguon": "dxf_layer", "layer": "*", "file": f"../10_process/dxf_{nb}.dxf"}),
+                (ps / f"excel_{nb}.xlsx", {"nguon": "excel", "file": f"../10_process/excel_{nb}.xlsx"}),
+                (ps / f"excel_{nb}.xls", {"nguon": "excel", "file": f"../10_process/excel_{nb}.xls"}),
+                (ps / f"excel_{nb}.csv", {"nguon": "csv", "file": f"../10_process/excel_{nb}.csv"}),
+            ):
+                if cand_p.is_file():
+                    ntc[f"be_mat_{nb}"] = cand_ng
+                    da_khoi_phuc = True
+                    break
+            else:
+                import os as _os, shutil as _sh
+                tmp_csv = Path(_os.environ.get("SANNEN_TMP") or _os.environ.get("TEMP") or r"C:\Temp") / f"sn_cad_chon_{nb}.csv"
+                if tmp_csv.is_file():
+                    dst_csv = ps / f"cad_chon_{nb}.csv"
+                    _sh.copy2(tmp_csv, dst_csv)
+                    ntc[f"be_mat_{nb}"] = {"nguon": "cad_chon", "file": f"10_process/cad_chon_{nb}.csv"}
+                    da_khoi_phuc = True
+    if da_khoi_phuc:
+        ntc_p.write_text("# Nguồn dữ liệu & hiệu chỉnh điểm do NGƯỜI chọn từ AutoCAD — ghi đè lot.yaml.\n"
+                         + yaml.safe_dump(ntc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    # Chạy lại nhap + mat để dựng lại TIN
+    ma_nhap, ra_nhap = _cli(lot, "nhap", "--xac-nhan-anh-xa")
+    if ma_nhap >= 2:
+        raise Loi("Nhập lại dữ liệu dừng: " + " ".join(ra_nhap.strip().splitlines()[-3:]))
+    ok_c1, _ = cong.cong_da_duyet(lot, 1)
+    if not ok_c1:
+        chan1 = cong.viec_chan(lot, 1)
+        if chan1:
+            raise Loi("Dữ liệu đầu vào có việc CHẶN cần xử lý trước khi tạo TIN: " + " | ".join(chan1))
+        cong.duyet_cong({"lot": str(lot.root), "cong": 1, "nguoi_duyet": "Người dùng CAD",
+                         "bang_chung": "Người dùng hiệu chỉnh / tạo lại lưới TIN trong AutoCAD"})
+    # Nếu tạo lại riêng 1 bề mặt (moc hoặc do), đảm bảo không còn file surface của bề mặt kia nếu bề mặt kia chưa khai báo điểm
+    for n_check in ("moc", "do"):
+        p_pts = ps / f"points_{n_check}.csv"
+        p_surf = ps / f"surface_{n_check}.json"
+        if p_surf.is_file() and (not p_pts.is_file() or sum(1 for _ in p_pts.open(encoding="utf-8")) <= 1):
+            p_surf.unlink()
+    bm_chay = bm if bm in ("moc", "do") else "ca-hai"
+    ma_mat, ra_mat = _cli(lot, "mat", "--be-mat", bm_chay)
+    if ma_mat >= 2:
+        raise Loi("Tạo lại TIN dừng: " + " ".join(ra_mat.strip().splitlines()[-3:]))
+    if a.lsp:
+        try:
+            _ve_3d_va_nguon(lot, Path(a.lsp), bm_chay, _dang(a))
+        except Exception:
+            pass
+    return {"be_mat": bm_chay, "ma_thoat": max(ma_nhap, ma_mat),
+            "van_ban": (ra_nhap + "\n" + ra_mat).strip()}, thong_bao_sua
+
+
+def l_nap_tu_mcp(a, lot):
+    """Đồng bộ dữ liệu đầu vào đã được AI Agent (Claude/ChatGPT/Antigravity) đọc & kiểm soát qua MCP vào bản vẽ AutoCAD đang mở:
+    nạp điểm, dựng lưới TIN, tạo 3D Mesh + trình xem 3D Web HTML."""
+    ps = lot.process_dir
+    if not (ps / "points_moc.csv").exists() or not (ps / "points_do.csv").exists():
+        ma_nhap, ra_nhap = _cli(lot, "nhap", "--xac-nhan-anh-xa")
+        if ma_nhap >= 2:
+            raise Loi("Chưa nạp được dữ liệu đầu vào từ MCP: " + " ".join(ra_nhap.strip().splitlines()[-3:]))
+    ok_c1, _ = cong.cong_da_duyet(lot, 1)
+    if not ok_c1:
+        chan1 = cong.viec_chan(lot, 1)
+        if chan1:
+            raise Loi("Dữ liệu đầu vào từ Agent còn việc CHẶN chưa duyệt ở Cổng 1: " + " | ".join(chan1))
+        cong.duyet_cong({"lot": str(lot.root), "cong": 1, "nguoi_duyet": "Người dùng CAD (Đồng bộ MCP)",
+                         "bang_chung": "Người dùng bấm Nhận & Tạo TIN từ Agent (MCP) trên AutoCAD"})
+    bm = a.be_mat or "ca-hai"
+    ma_mat, ra_mat = _cli(lot, "mat", "--be-mat", bm)
+    if ma_mat >= 2:
+        raise Loi("Dựng lưới TIN từ dữ liệu MCP dừng: " + " ".join(ra_mat.strip().splitlines()[-3:]))
+    if (ps / "boundary.geojson").exists() and not (ps / "lo.json").exists():
+        _cli(lot, "lo")
+    _cli(lot, "xem3d")
+    da_ve = {}
+    if a.lsp:
+        da_ve = _ve_3d_va_nguon(lot, Path(a.lsp), bm, _dang(a), ve_nguon=True)
+    return {"be_mat": bm, "da_ve": da_ve}, \
+        "Đã nhận dữ liệu đã kiểm soát từ Agent (MCP), đẩy vào bản vẽ CAD, dựng lưới TIN, tạo 3D Mesh và HTML 3D View!"
 
 
 LENH = {"trang-thai": l_trang_thai, "ve": l_ve, "ve-ke-hoach": l_ve_ke_hoach, "tin3d": l_tin3d, "tin3d-tat": l_tin3d_tat,
@@ -858,7 +1342,7 @@ LENH = {"trang-thai": l_trang_thai, "ve": l_ve, "ve-ke-hoach": l_ve_ke_hoach, "t
         "mat-cat": l_mat_cat, "bang": l_bang,
         "chay": l_chay, "canh-bao": l_canh_bao, "o-tai": l_o_tai, "dong-bo": l_dong_bo,
         "hieuchinh-nhieu": l_hieuchinh_nhieu, "duyet": l_duyet, "khoi-tao-be-mat": l_khoi_tao_be_mat,
-        "xoa-du-lieu-cu": l_xoa_du_lieu_cu}
+        "xoa-du-lieu-cu": l_xoa_du_lieu_cu, "tin-sua": l_tin_sua, "nap-tu-mcp": l_nap_tu_mcp}
 
 
 # =========================================================================== điểm vào
@@ -904,6 +1388,7 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--them")
     ap.add_argument("--e", type=float)
     ap.add_argument("--n", type=float)
+    ap.add_argument("--z", type=float)
     ap.add_argument("--tu-file")
     ap.add_argument("--chap-nhan", action="store_true")
     ap.add_argument("--cong", type=int)

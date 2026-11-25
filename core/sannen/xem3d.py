@@ -53,14 +53,27 @@ def _vong(v) -> list:
     return [p for p in v if len(p) >= 2]
 
 
-def _du_lieu(lot: Lot, cfg: dict | None, phong_dai_z: float) -> dict:
-    d_moc = _doc_be_mat(lot, "surface_moc.json", "mốc")
-    d_do = _doc_be_mat(lot, "surface_do.json", "đo")
-    moc, do = Tin.from_dict(d_moc), Tin.from_dict(d_do)
+def _du_lieu(lot: Lot, cfg: dict | None, phong_dai_z: float, cho_phep_mot_mat: bool = False) -> dict:
+    p_moc = lot.process_dir / "surface_moc.json"
+    p_do = lot.process_dir / "surface_do.json"
+    if not p_moc.exists() and not p_do.exists():
+        raise ThieuBeMat(
+            "Chưa có surface_moc.json / surface_do.json trong 10_process/. Chạy `mat` trước:\n"
+            f"  python -m sannen.cli mat --lot {lot.root} --be-mat ca-hai")
+    if not cho_phep_mot_mat:
+        d_moc = _doc_be_mat(lot, "surface_moc.json", "mốc")
+        d_do = _doc_be_mat(lot, "surface_do.json", "đo")
+    else:
+        d_moc = io_out.doc_json(p_moc) if p_moc.exists() else {"goc": [0.0, 0.0], "diem": [], "tam_giac": [], "loai_tam_giac": []}
+        d_do = io_out.doc_json(p_do) if p_do.exists() else {"goc": d_moc["goc"], "diem": [], "tam_giac": [], "loai_tam_giac": []}
+        if not p_moc.exists():
+            d_moc["goc"] = d_do["goc"]
+    moc = Tin.from_dict(d_moc) if d_moc["diem"] else None
+    do = Tin.from_dict(d_do) if d_do["diem"] else None
 
     pts = list(d_moc["diem"]) + list(d_do["diem"])
     if not pts:
-        raise ThieuBeMat("Hai bề mặt không có điểm nào — xem lại `mat`.")
+        raise ThieuBeMat("Bề mặt không có điểm nào — xem lại `mat`.")
     e0 = _r(sum(p[0] for p in pts) / len(pts))
     n0 = _r(sum(p[1] for p in pts) / len(pts))
 
@@ -75,11 +88,12 @@ def _du_lieu(lot: Lot, cfg: dict | None, phong_dai_z: float) -> dict:
     # Δz tại từng đỉnh bề mặt Đo = z_đo − z_mốc nội suy (null nếu đỉnh ngoài TIN mốc)
     dz = []
     for e, n, z in d_do["diem"]:
-        zm = moc.z_tai(e, n)
+        zm = moc.z_tai(e, n) if moc else None
         dz.append(None if zm is None else _r(z - zm, 4))
 
     def diem_phu(e: float, n: float) -> list:
-        zm, zd = moc.z_tai(e, n), do.z_tai(e, n)
+        zm = moc.z_tai(e, n) if moc else None
+        zd = do.z_tai(e, n) if do else None
         return [_r(e - e0), _r(n - n0), None if zm is None else _r(zm), None if zd is None else _r(zd)]
 
     bien, loai_tru = [], []
@@ -127,7 +141,8 @@ def _du_lieu(lot: Lot, cfg: dict | None, phong_dai_z: float) -> dict:
     }
 
 
-def tao_html(lot_root, ra=None, phong_dai_z: float = 2.0, cfg: dict | None = None) -> Path:
+def tao_html(lot_root, ra=None, phong_dai_z: float = 2.0, cfg: dict | None = None,
+             cho_phep_mot_mat: bool = False) -> Path:
     """Sinh trình xem 3D. Mặc định ghi `20_output/tin3d_view.html` của lô; trả về đường dẫn file."""
     lot = Lot(Path(lot_root).expanduser().resolve())
     if cfg is None:
@@ -136,7 +151,7 @@ def tao_html(lot_root, ra=None, phong_dai_z: float = 2.0, cfg: dict | None = Non
             cfg = doc_lot(lot.lot_yaml)
         except Exception:                # lot.yaml thiếu/lỗi không cản việc xem
             cfg = None
-    du_lieu = _du_lieu(lot, cfg, max(1.0, min(10.0, float(phong_dai_z))))
+    du_lieu = _du_lieu(lot, cfg, max(1.0, min(10.0, float(phong_dai_z))), cho_phep_mot_mat=cho_phep_mot_mat)
     js = json.dumps(du_lieu, ensure_ascii=False, separators=(",", ":"))
     js = js.replace("<", "\\u003c").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
     noi_dung = (MAU_HTML.replace("__TIEU_DE__", html.escape(du_lieu["ma_lo"]))
@@ -154,7 +169,7 @@ def tao_html(lot_root, ra=None, phong_dai_z: float = 2.0, cfg: dict | None = Non
 
 def chay(lot: Lot, cfg: dict, ra: Path | None, phong_dai_z: float, mo: bool) -> int:
     """Verb CLI `xem3d`."""
-    p = tao_html(lot.root, ra, phong_dai_z, cfg)
+    p = tao_html(lot.root, ra, phong_dai_z, cfg, cho_phep_mot_mat=mo)
     print(f"Đã tạo trình xem 3D: {p}")
     if mo:
         try:

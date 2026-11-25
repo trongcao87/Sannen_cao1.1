@@ -42,8 +42,17 @@ if (-not $files) { Loi "Không thấy file .cs trong $nguon" }
 $binTam = Join-Path $bin "_build"
 New-Item -ItemType Directory -Force -Path $bin | Out-Null
 New-Item -ItemType Directory -Force -Path $binTam | Out-Null
-# Biên dịch ra thư mục tạm với đúng tên SanNenPalette.dll (để AssemblyName là "SanNenPalette"):
-$tam = Join-Path $binTam "SanNenPalette.dll"
+if (Test-Path (Join-Path $binTam "SanNenDraw.dll")) { $drawDll = Join-Path $binTam "SanNenDraw.dll" }
+# Biên dịch ra thư mục tạm với tên duy nhất SanNenPalette_<stamp>.dll để khi AutoCAD đang mở vẫn NETLOAD được bản mới
+$stamp = (Get-Date).ToString("HHmmss")
+$binTam = Join-Path $bin ("_build_" + $stamp)
+New-Item -ItemType Directory -Force -Path $binTam | Out-Null
+if (Test-Path (Join-Path $bin "_build\SanNenDraw.dll")) {
+    Copy-Item -Force (Join-Path $bin "_build\SanNenDraw.dll") (Join-Path $binTam "SanNenDraw.dll") -ErrorAction SilentlyContinue
+} elseif (Test-Path (Join-Path $bin "SanNenDraw.dll")) {
+    Copy-Item -Force (Join-Path $bin "SanNenDraw.dll") (Join-Path $binTam "SanNenDraw.dll") -ErrorAction SilentlyContinue
+}
+$tam = Join-Path $binTam ("SanNenPalette_" + $stamp + ".dll")
 $rsp = Join-Path $bin "SanNenPalette.rsp"
 $dong = @(
     "/nologo", "/target:library", "/optimize+", "/debug:pdbonly", "/codepage:65001", "/utf8output", "/nowarn:1701,1702",
@@ -67,14 +76,21 @@ Remove-Item $rsp -ErrorAction SilentlyContinue
 if ($ma -ne 0) { Remove-Item $tam -ErrorAction SilentlyContinue; Loi "Biên dịch thất bại (mã $ma) — xem các dòng 'error CS' ở trên." }
 
 try {
-    Move-Item -Force $tam $dll
+    Copy-Item -Force $tam $dll -ErrorAction Stop
     $pdb = [System.IO.Path]::ChangeExtension($tam, ".pdb")
-    if (Test-Path $pdb) { Move-Item -Force $pdb ([System.IO.Path]::ChangeExtension($dll, ".pdb")) }
+    if (Test-Path $pdb) { Copy-Item -Force $pdb ([System.IO.Path]::ChangeExtension($dll, ".pdb")) -ErrorAction SilentlyContinue }
+    Write-Host ("XONG: " + $dll + " (bản nạp trực tiếp: " + $tam + ")") -ForegroundColor Green
 } catch {
-    Remove-Item $tam -ErrorAction SilentlyContinue
-    Loi "Không ghi đè được $dll — AutoCAD đang giữ DLL cũ (đã NETLOAD). Đóng AutoCAD rồi chạy lại. ($($_.Exception.Message))"
+    Write-Host ("CẢNH BÁO: AutoCAD đang mở và giữ $dll — đã biên dịch bản mới tại $tam.") -ForegroundColor Yellow
 }
-Write-Host ("XONG: " + $dll) -ForegroundColor Green
+[System.IO.File]::WriteAllText((Join-Path $bin "latest_palette.txt"), $tam, (New-Object System.Text.UTF8Encoding($false)))
+# Cập nhật luôn Registry AutoCAD Demand-Load trỏ tới bản DLL mới nhất (để lần mở AutoCAD sau cũng nạp đúng bản mới nhất)
+$acadKeys = Get-ChildItem -Path "HKCU:\Software\Autodesk\AutoCAD" -Recurse -ErrorAction SilentlyContinue |
+    Where-Object { $_.PSChildName -eq "SanNenPalette" }
+$targetLoader = if (Test-Path (Join-Path $bin "latest_palette.txt")) { (Get-Content (Join-Path $bin "latest_palette.txt") -TotalCount 1).Trim() } else { $dll }
+foreach ($k in $acadKeys) {
+    Set-ItemProperty -Path $k.PSPath -Name "LOADER" -Value $targetLoader -ErrorAction SilentlyContinue
+}
 Write-Host "Hai DLL phải nằm CÙNG thư mục bin (palette nạp SanNenDraw.dll từ đó)."
 Write-Host "Nạp trong AutoCAD: gõ SN_PALETTE (sannen.lsp tự NETLOAD), hoặc NETLOAD thủ công file trên."
 Write-Host "Nếu AutoCAD hỏi tin cậy DLL (SECURELOAD): chọn 'Always Load' cho thư mục này, hoặc tự thêm thư mục cad\dotnet\bin vào TRUSTEDPATHS."

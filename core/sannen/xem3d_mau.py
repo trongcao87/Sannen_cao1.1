@@ -143,8 +143,9 @@ var LDZ = Math.max(0.5, Math.ceil(dzMax * 2) / 2);   // biên thang màu Δz (m)
 var DB = 0.02;                                         // vùng "≈ 0" của Δz (m)
 
 // ---------- trạng thái giao diện
+var coMoc = MOC.n > 0 && MOC.nt > 0, coDo = DO.n > 0 && DO.nt > 0;
 var st = {
-  moc: true, do_: true, che: 'dd', pdz: D.phong_dai_z, tach: 0,
+  moc: coMoc || !coDo, do_: coDo, che: (coMoc && coDo) ? 'dd' : 'cd', pdz: D.phong_dai_z, tach: 0,
   luoiTin: (MOC.nt + DO.nt) < 3000, thieu: true, bien: true, ranh: true, luoiO: false
 };
 var cam = { az: -0.52, el: 0.62, dist: 1, f: 1, px: 0, py: 0, persp: true };
@@ -498,6 +499,8 @@ function nap() {
   dungLai();
 }
 $('pdz').value = st.pdz; $('vLuoiTin').checked = st.luoiTin;
+$('hMoc').checked = st.moc; $('hDo').checked = st.do_;
+document.querySelectorAll('input[name=che]').forEach(function (e) { e.checked = (e.value === st.che); });
 ['hMoc', 'hDo', 'pdz', 'tach', 'vLuoiTin', 'vThieu', 'vBien', 'vRanh', 'vLuoiO'].forEach(function (id) {
   $(id).addEventListener('input', nap);
 });

@@ -235,6 +235,8 @@ def doc_bien_json(json_path: Path, cung_tron_sai_so_mm: float = 5.0) -> tuple[li
         khep = True if isinstance(item, list) else bool(item.get("khep_kin", True))
         if not pts_raw:
             continue
+        if len(pts_raw) >= 3:
+            khep = True
         co_bulge = any(len(p) >= 3 and float(p[2]) != 0.0 for p in pts_raw)
         if co_bulge:
             pts = bung_bulge([(float(p[0]), float(p[1]), float(p[2]) if len(p) >= 3 else 0.0) for p in pts_raw],

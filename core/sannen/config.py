@@ -45,7 +45,7 @@ def doc_lot(lot_yaml: Path) -> dict[str, Any]:
     ntc = lot_yaml.parent / "nguon_tuy_chinh.yaml"
     if ntc.exists():
         nd = yaml.safe_load(ntc.read_text(encoding="utf-8")) or {}
-        for k in ("be_mat_moc", "be_mat_do", "bien_lo", "loai_tru", "dut_gay", "dut_gay_ap_dung", "anh_xa_cot_excel"):
+        for k in ("be_mat_moc", "be_mat_do", "bien_lo", "loai_tru", "dut_gay", "dut_gay_ap_dung", "anh_xa_cot_excel", "bo_diem", "them_diem"):
             if k in nd and nd[k] is not None:
                 cfg[k] = nd[k]
     thieu = [t for t in TRUONG_BAT_BUOC if t not in cfg]

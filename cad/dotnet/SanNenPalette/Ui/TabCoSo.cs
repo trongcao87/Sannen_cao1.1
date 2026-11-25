@@ -42,10 +42,8 @@ namespace SanNen.Palette.Ui
             {
                 Chay(delegate
                 {
-                    string err = CadLenh.LamMoiXoaCu();
-                    if (err != null) Bao(err);
-                    else Bao("Đang xóa dữ liệu cũ đã có từ trước và làm mới…");
-                    DieuPhoi.YeuCau(true, true);
+                    Bao("Đang làm mới trạng thái lô và bản vẽ…");
+                    DieuPhoi.YeuCauNgay(true, true);
                 });
             };
             _tt.Dock = DockStyle.Fill;

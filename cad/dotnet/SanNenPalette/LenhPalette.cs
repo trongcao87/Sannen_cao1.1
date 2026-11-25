@@ -25,8 +25,17 @@ namespace SanNen.Palette
             try
             {
                 AppDomain.CurrentDomain.AssemblyResolve += TimAssembly;
+                bool daThay = LenhPalette.ThayThePaletteCu();
+                try
+                {
+                    string diag = Path.Combine(Path.GetTempPath(), "sn_net_init.txt");
+                    File.WriteAllText(diag, "Loaded=" + typeof(KhoiDong).Assembly.FullName + " @ " + typeof(KhoiDong).Assembly.Location + "\nReplaced=" + daThay);
+                }
+                catch (Exception) { }
                 Document d = AcApp.DocumentManager.MdiActiveDocument;
-                if (d != null) d.Editor.WriteMessage("\nSAN NỀN palette đã nạp — gõ SN_PALETTE để mở/tắt bảng dọc.");
+                if (d != null) d.Editor.WriteMessage(daThay
+                    ? "\nSAN NỀN palette: đã xóa giao diện cũ và cập nhật giao diện mới!"
+                    : "\nSAN NỀN palette đã nạp — gõ SN_PALETTE để mở/tắt bảng dọc.");
             }
             catch (Exception) { }
         }
@@ -94,6 +103,19 @@ namespace SanNen.Palette
             catch (Exception ex) { Bao(ex); }
         }
 
+        [Rt.CommandMethod("SN_PALETTE_CAPNHAT_UI", Rt.CommandFlags.Modal)]
+        public void CapNhatUi()
+        {
+            try
+            {
+                Huy();
+                Tao();
+                DieuPhoi.YeuCauNgay(true, true);
+                foreach (TabCoSo t in _tab) t.ApMau();
+            }
+            catch (Exception ex) { Bao(ex); }
+        }
+
         static void Tao()
         {
             Mau.Cap();
@@ -120,6 +142,46 @@ namespace SanNen.Palette
             string ten = DocIni("tab");
             if (ten != null)
                 for (int i = 0; i < _tab.Length; i++) if (_tab[i].TenTab == ten) { _ps.Activate(i); break; }
+        }
+
+        public static bool ThayThePaletteCu()
+        {
+            // Nếu một bản SanNenPalette.dll cũ đã được nạp trước đó trong cùng phiên AutoCAD, đóng và hủy PaletteSet cũ rồi dựng lại bằng bản mới
+            bool coCu = false;
+            try
+            {
+                Assembly hienTai = typeof(LenhPalette).Assembly;
+                foreach (Assembly a in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    if (a == hienTai) continue;
+                    string n = a.GetName().Name ?? "";
+                    if (!n.StartsWith("SanNenPalette", StringComparison.OrdinalIgnoreCase)) continue;
+                    Type t = a.GetType("SanNen.Palette.LenhPalette");
+                    if (t == null) continue;
+                    coCu = true;
+                    MethodInfo mHuy = t.GetMethod("Huy", BindingFlags.Public | BindingFlags.Static);
+                    if (mHuy != null) { try { mHuy.Invoke(null, null); } catch (Exception) { } }
+                    FieldInfo fPs = t.GetField("_ps", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static);
+                    if (fPs != null)
+                    {
+                        PaletteSet cu = fPs.GetValue(null) as PaletteSet;
+                        if (cu != null)
+                        {
+                            try { cu.Visible = false; cu.Dispose(); } catch (Exception) { }
+                            try { fPs.SetValue(null, null); } catch (Exception) { }
+                        }
+                    }
+                }
+                if (coCu)
+                {
+                    Huy();
+                    Tao();
+                    DieuPhoi.YeuCauNgay(true, true);
+                    if (_tab != null) foreach (TabCoSo tb in _tab) tb.ApMau();
+                }
+            }
+            catch (Exception) { }
+            return coCu;
         }
 
         public static void Huy()

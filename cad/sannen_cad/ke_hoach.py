@@ -270,7 +270,15 @@ def tao_ke_hoach_tin3d(lot_root, be_mat: str = "ca-hai", dang: str = "polyface")
     if chon is None:
         raise ValueError("be_mat phải là moc, do hoặc ca-hai")
     kiem_dang_3d(dang)
-    nc = ve.ngu_canh(lot_root)
+    lot = Lot(Path(lot_root).resolve())
+    ps = lot.process_dir
+    for n in chon:
+        if not (ps / f"surface_{n}.json").exists():
+            raise FileNotFoundError(f"Chưa có surface_{n}.json — chạy `mat` trước")
+    cfg = doc_lot(lot.lot_yaml)
+    s0 = io_out.doc_json(ps / f"surface_{chon[0]}.json")
+    hash_tv = str((s0.get("sinh_tu") or {}).get("hash_dau_vao") or "")[:16]
+    nc = {"lot": lot, "ps": ps, "ma_lo": str(cfg["ma_lo"]), "dot": int(cfg["dot"]), "hash_tv": hash_tv}
     be = BackendKeHoach("tin3d")
     be.cad_purge_sn(nc["ma_lo"], nc["dot"], xem_truoc=False, loai=("mat_3d", "qc"))
     ve.ve_mat_3d(be, nc, chon, dang=dang)

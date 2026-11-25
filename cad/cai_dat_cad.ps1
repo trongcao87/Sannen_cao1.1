@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Ghi cấu hình cho menu SAN NỀN trong AutoCAD (%APPDATA%\SanNen\sannen.cfg).
 

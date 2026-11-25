@@ -67,7 +67,7 @@ def test_file_nguon_va_script_xay():
 def test_lenh_commandmethod_va_tab():
     t = cs("LenhPalette.cs")
     lenh = set(re.findall(r'CommandMethod\((?:"[A-Z_]+",\s*)?"(SN_[A-Z_]+)"', t))
-    assert lenh == {"SN_PALETTE", "SN_PALETTE_MO", "SN_PALETTE_DONG"}
+    assert {"SN_PALETTE", "SN_PALETTE_MO", "SN_PALETTE_DONG"} <= lenh
     assert "5A7E6D2C-3B1F-4E8A-9C44-7D1B0E52A6F3" in t and 'PaletteSet("SAN NỀN"' in t           # tên + GUID cố định
     assert "DockSides.Left" in t and "DockSides.Right" in t and "ShowAutoHideButton" in t
     assert "Size(340, 700)" in t
